@@ -1,5 +1,9 @@
-ignoredBuiltDependencies:
-    - sharp
-    - unrs-resolver
 packages:
-    - 'workspaces/**'
+  - 'workspaces/**'
+ignoredBuiltDependencies:
+  - sharp
+  - unrs-resolver
+onlyBuiltDependencies:
+  - '@prisma/engines'
+  - esbuild
+  - prisma
