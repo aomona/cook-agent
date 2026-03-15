@@ -178,3 +178,5 @@
 - 実行時イベントによって plan 更新をトリガーできる
 - plan 変更後もアシスタントがガイダンスを継続できる
 - 実装が理解しやすく、反復しやすい状態を保てている
+
+Always use Context7 when I need library/API documentation, code generation, setup or configuration steps without me having to explicitly ask.
