@@ -846,8 +846,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "remaining_seconds": {
-          "name": "remaining_seconds",
+        "paused_remaining_seconds": {
+          "name": "paused_remaining_seconds",
           "type": "integer",
           "primaryKey": false,
           "notNull": false

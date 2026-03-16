@@ -207,7 +207,8 @@ export const sessionTimers = pgTable(
 		stepId: text('step_id').notNull(),
 		label: text('label').notNull(),
 		durationSeconds: integer('duration_seconds').notNull(),
-		remainingSeconds: integer('remaining_seconds'),
+		// While running, clients derive the live countdown from endsAt instead of writing every tick.
+		pausedRemainingSeconds: integer('paused_remaining_seconds'),
 		status: timerStatusEnum('status').notNull().default('running'),
 		startedAt: timestamp('started_at', { withTimezone: true }),
 		endsAt: timestamp('ends_at', { withTimezone: true }),

@@ -81,7 +81,7 @@ CREATE TABLE "session_timers" (
 	"step_id" text NOT NULL,
 	"label" text NOT NULL,
 	"duration_seconds" integer NOT NULL,
-	"remaining_seconds" integer,
+	"paused_remaining_seconds" integer,
 	"status" timer_status DEFAULT 'running' NOT NULL,
 	"started_at" timestamp with time zone,
 	"ends_at" timestamp with time zone,
