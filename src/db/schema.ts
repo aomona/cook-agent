@@ -18,6 +18,7 @@ import type {
 	PlanPatch,
 	RecipeSourceRawContent,
 	SessionEventPayload,
+	SessionEventType,
 } from '@/lib/plans/types';
 import { user } from './auth-schema';
 
@@ -185,7 +186,7 @@ export const sessionEvents = pgTable(
 		sessionId: uuid('session_id')
 			.notNull()
 			.references(() => cookingSessions.id, { onDelete: 'cascade' }),
-		eventType: sessionEventTypeEnum('event_type').notNull(),
+		eventType: sessionEventTypeEnum('event_type').$type<SessionEventType>().notNull(),
 		stepId: text('step_id'),
 		payload: jsonb('payload').$type<SessionEventPayload>().notNull(),
 		occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
@@ -204,6 +205,7 @@ export const sessionTimers = pgTable(
 		sessionId: uuid('session_id')
 			.notNull()
 			.references(() => cookingSessions.id, { onDelete: 'cascade' }),
+		planTimerId: text('plan_timer_id').notNull(),
 		stepId: text('step_id').notNull(),
 		label: text('label').notNull(),
 		durationSeconds: integer('duration_seconds').notNull(),
@@ -216,6 +218,7 @@ export const sessionTimers = pgTable(
 	},
 	(table) => [
 		index('session_timers_session_id_status_idx').on(table.sessionId, table.status),
+		index('session_timers_session_id_plan_timer_id_idx').on(table.sessionId, table.planTimerId),
 		index('session_timers_session_id_step_id_idx').on(table.sessionId, table.stepId),
 	],
 );

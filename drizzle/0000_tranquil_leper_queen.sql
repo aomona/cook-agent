@@ -78,6 +78,7 @@ CREATE TABLE "session_events" (
 CREATE TABLE "session_timers" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"session_id" uuid NOT NULL,
+	"plan_timer_id" text NOT NULL,
 	"step_id" text NOT NULL,
 	"label" text NOT NULL,
 	"duration_seconds" integer NOT NULL,
@@ -165,6 +166,7 @@ CREATE INDEX "recipe_sources_source_url_idx" ON "recipe_sources" USING btree ("s
 CREATE INDEX "session_events_session_id_occurred_at_idx" ON "session_events" USING btree ("session_id","occurred_at");--> statement-breakpoint
 CREATE INDEX "session_events_event_type_idx" ON "session_events" USING btree ("event_type");--> statement-breakpoint
 CREATE INDEX "session_timers_session_id_status_idx" ON "session_timers" USING btree ("session_id","status");--> statement-breakpoint
+CREATE INDEX "session_timers_session_id_plan_timer_id_idx" ON "session_timers" USING btree ("session_id","plan_timer_id");--> statement-breakpoint
 CREATE INDEX "session_timers_session_id_step_id_idx" ON "session_timers" USING btree ("session_id","step_id");--> statement-breakpoint
 CREATE INDEX "account_userId_idx" ON "account" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "session_userId_idx" ON "session" USING btree ("user_id");--> statement-breakpoint

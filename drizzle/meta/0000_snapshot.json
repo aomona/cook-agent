@@ -828,6 +828,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "plan_timer_id": {
+          "name": "plan_timer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "step_id": {
           "name": "step_id",
           "type": "text",
@@ -899,6 +905,27 @@
             },
             {
               "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "session_timers_session_id_plan_timer_id_idx": {
+          "name": "session_timers_session_id_plan_timer_id_idx",
+          "columns": [
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "plan_timer_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

@@ -86,14 +86,79 @@ export type PlanPatch = {
 	summary?: string;
 };
 
-export type SessionEventPayload = {
+export type SessionEventSeverity = 'info' | 'warning' | 'error';
+
+export type SessionEventBasePayload = {
 	message?: string;
 	stepId?: string;
-	severity?: 'info' | 'warning' | 'error';
-	delayMinutes?: number;
-	ingredientName?: string;
-	replacementOptions?: string[];
-	requestedChange?: string;
-	appliedPatch?: PlanPatch;
 	metadata?: Record<string, unknown>;
 };
+
+export type SessionProgressEventPayload = SessionEventBasePayload & {
+	stepId: string;
+	status: 'started' | 'completed';
+	severity?: SessionEventSeverity;
+};
+
+export type SessionDelayEventPayload = SessionEventBasePayload & {
+	stepId: string;
+	delayMinutes: number;
+	severity?: SessionEventSeverity;
+};
+
+export type SessionMistakeEventPayload = SessionEventBasePayload & {
+	stepId: string;
+	severity?: SessionEventSeverity;
+};
+
+export type SessionIngredientShortageEventPayload = SessionEventBasePayload & {
+	ingredientName: string;
+	replacementOptions?: string[];
+	severity?: SessionEventSeverity;
+};
+
+export type SessionUserRequestEventPayload = SessionEventBasePayload & {
+	requestedChange: string;
+	severity?: SessionEventSeverity;
+};
+
+export type SessionReplanAppliedEventPayload = SessionEventBasePayload & {
+	appliedPatch: PlanPatch;
+	severity?: SessionEventSeverity;
+};
+
+export type SessionTimerAction =
+	| 'started'
+	| 'paused'
+	| 'resumed'
+	| 'done'
+	| 'cancelled'
+	| 'adjusted';
+
+export type SessionTimerEventPayload = SessionEventBasePayload & {
+	timerId: string;
+	action: SessionTimerAction;
+	remainingSeconds?: number;
+	severity?: SessionEventSeverity;
+};
+
+export type SessionEventPayloadByType = {
+	progress: SessionProgressEventPayload;
+	delay: SessionDelayEventPayload;
+	mistake: SessionMistakeEventPayload;
+	ingredient_shortage: SessionIngredientShortageEventPayload;
+	user_request: SessionUserRequestEventPayload;
+	replan_applied: SessionReplanAppliedEventPayload;
+	timer: SessionTimerEventPayload;
+};
+
+export type SessionEventType = keyof SessionEventPayloadByType;
+
+export type SessionEventPayload = SessionEventPayloadByType[SessionEventType];
+
+export type SessionEventRecord = {
+	[K in SessionEventType]: {
+		eventType: K;
+		payload: SessionEventPayloadByType[K];
+	};
+}[SessionEventType];

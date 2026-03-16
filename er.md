@@ -121,6 +121,7 @@ erDiagram
 	SESSION_TIMERS {
 		uuid id PK
 		uuid session_id FK
+		text plan_timer_id
 		text step_id
 		text label
 		int duration_seconds
@@ -151,4 +152,4 @@ erDiagram
 	COOKING_SESSIONS ||--o{ SESSION_TIMERS : tracks
 ```
 
-Note: `SESSION_TIMERS` does not persist a per-second countdown. While a timer is `running`, the client computes the remaining time from `ends_at`; `paused_remaining_seconds` is stored only for paused or manually adjusted timers.
+Note: `SESSION_TIMERS` does not persist a per-second countdown. While a timer is `running`, the client computes the remaining time from `ends_at`; `paused_remaining_seconds` is stored only for paused or manually adjusted timers. `plan_timer_id` links each session timer back to the timer definition embedded in the plan document.
