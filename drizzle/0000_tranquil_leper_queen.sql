@@ -83,7 +83,7 @@ CREATE TABLE "session_timers" (
 	"label" text NOT NULL,
 	"duration_seconds" integer NOT NULL,
 	"paused_remaining_seconds" integer,
-	"status" timer_status DEFAULT 'running' NOT NULL,
+	"status" "timer_status" DEFAULT 'running' NOT NULL,
 	"started_at" timestamp with time zone,
 	"ends_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,

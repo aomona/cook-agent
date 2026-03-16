@@ -1,4 +1,5 @@
 import { relations } from 'drizzle-orm';
+import type { PgTableWithColumns } from 'drizzle-orm/pg-core';
 import {
 	foreignKey,
 	index,
@@ -85,25 +86,6 @@ export const recipeSources = pgTable(
 	],
 );
 
-export const plans = pgTable(
-	'plans',
-	{
-		id: uuid('id').defaultRandom().primaryKey(),
-		userId: text('user_id')
-			.notNull()
-			.references(() => user.id, { onDelete: 'cascade' }),
-		title: text('title').notNull(),
-		status: planStatusEnum('status').notNull().default('draft'),
-		requestedServings: integer('requested_servings'),
-		activeVersionId: uuid('active_version_id'),
-		...timestamps,
-	},
-	(table) => [
-		index('plans_user_id_updated_at_idx').on(table.userId, table.updatedAt),
-		index('plans_active_version_id_idx').on(table.activeVersionId),
-	],
-);
-
 export const planRecipeSources = pgTable(
 	'plan_recipe_sources',
 	{
@@ -122,7 +104,8 @@ export const planRecipeSources = pgTable(
 	],
 );
 
-export const planVersions = pgTable(
+// biome-ignore lint/suspicious/noExplicitAny: breaks recursive table inference for this cross-table composite FK.
+export const planVersions: PgTableWithColumns<any> = pgTable(
 	'plan_versions',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
@@ -141,9 +124,39 @@ export const planVersions = pgTable(
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
+		foreignKey({
+			name: 'plan_versions_parent_same_plan_fk',
+			columns: [table.planId, table.parentVersionId],
+			foreignColumns: [table.planId, table.id],
+		}).onDelete('no action'),
 		uniqueIndex('plan_versions_plan_id_id_idx').on(table.planId, table.id),
 		uniqueIndex('plan_versions_plan_id_version_number_idx').on(table.planId, table.versionNumber),
 		index('plan_versions_plan_id_created_at_idx').on(table.planId, table.createdAt),
+	],
+);
+
+// biome-ignore lint/suspicious/noExplicitAny: breaks recursive table inference for this cross-table composite FK.
+export const plans: PgTableWithColumns<any> = pgTable(
+	'plans',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		title: text('title').notNull(),
+		status: planStatusEnum('status').notNull().default('draft'),
+		requestedServings: integer('requested_servings'),
+		activeVersionId: uuid('active_version_id'),
+		...timestamps,
+	},
+	(table) => [
+		foreignKey({
+			name: 'plans_active_version_same_plan_fk',
+			columns: [table.id, table.activeVersionId],
+			foreignColumns: [planVersions.planId, planVersions.id],
+		}).onDelete('no action'),
+		index('plans_user_id_updated_at_idx').on(table.userId, table.updatedAt),
+		index('plans_active_version_id_idx').on(table.activeVersionId),
 	],
 );
 
