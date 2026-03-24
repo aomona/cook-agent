@@ -160,6 +160,7 @@
 - 新しいツールやフレームワークを導入する場合は、スクリプトとドキュメントも追加すること。
 - plan 生成ロジックを変更する場合は、UI 描画と実行時パッチに耐えられる安定性を保つこと。
 - 利用可能な skill が作業内容に合致する場合は、積極的に skill を使うこと。
+- Git を扱う作業では、branch 名、commit message、PR title / body、review コメント整理を含め、原則として毎回 `git-naming` skill を先に読み込むこと。
 
 ## Cursor / Copilot ルール
 
@@ -178,3 +179,5 @@
 - 実行時イベントによって plan 更新をトリガーできる
 - plan 変更後もアシスタントがガイダンスを継続できる
 - 実装が理解しやすく、反復しやすい状態を保てている
+
+Always use Context7 when I need library/API documentation, code generation, setup or configuration steps without me having to explicitly ask.
