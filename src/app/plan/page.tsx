@@ -1,8 +1,10 @@
-import { Button, Card, Flex, Heading, Status, Text, VStack } from '@workspaces/ui';
+import { Button, Flex, Heading, Text, VStack } from '@workspaces/ui';
 import { cookies } from 'next/headers';
 import NextLink from 'next/link';
 import { redirect } from 'next/navigation';
-import { getActiveCreatePlanId, getCreatePlanData, getRequestActor } from '@/lib/create-session';
+import { getActiveCreatePlanId, getRequestActor } from '@/lib/create-session';
+import { getOwnedPlanEditorData } from '@/lib/plans/queries';
+import { PlanPageClient } from './plan-page-client';
 
 export default async function PlanPage() {
 	const cookieStore = await cookies();
@@ -18,26 +20,19 @@ export default async function PlanPage() {
 		redirect('/create');
 	}
 
-	const plan = await getCreatePlanData(planId, actor.userId);
+	const plan = await getOwnedPlanEditorData(planId, actor.userId);
 
 	if (!plan) {
 		redirect('/create');
 	}
 
-	if (!plan.canProceed) {
-		redirect('/create');
-	}
-
 	return (
 		<Flex align="center" justify="center" minH="100vh" px="md" py="xl">
-			<VStack align="stretch" gap="lg" maxW="3xl" w="full">
+			<VStack align="stretch" gap="lg" maxW="4xl" w="full">
 				<Flex justify="space-between" wrap="wrap" gap="md">
 					<VStack align="stretch" gap="xs">
-						<Heading size="xl">plan の下準備ができました</Heading>
-						<Text color="fg.subtle">
-							抽出済みのレシピ要約を確認できる状態です。次の plan 生成 UI はこの draft plan
-							を使って実装できます。
-						</Text>
+						<Heading size="xl">{plan.title}</Heading>
+						<Text color="fg.subtle">構造化済みレシピから実行可能な工程を生成します。</Text>
 					</VStack>
 					<NextLink href="/create">
 						<Button as="span" variant="outline">
@@ -46,24 +41,7 @@ export default async function PlanPage() {
 					</NextLink>
 				</Flex>
 
-				<Card.Root variant="outline">
-					<Card.Body gap="md">
-						<Status value="success">抽出完了</Status>
-						<Heading size="md">{plan.title}</Heading>
-						<Text color="fg.subtle">{plan.recipes.length} 件のレシピ要約を保持しています。</Text>
-					</Card.Body>
-				</Card.Root>
-
-				<VStack align="stretch" gap="md">
-					{plan.recipes.map((recipe) => (
-						<Card.Root key={recipe.id} variant="outline">
-							<Card.Body gap="sm">
-								<Heading size="sm">{recipe.title ?? recipe.label}</Heading>
-								{recipe.summary ? <Text>{recipe.summary}</Text> : null}
-							</Card.Body>
-						</Card.Root>
-					))}
-				</VStack>
+				<PlanPageClient initialPlan={plan} />
 			</VStack>
 		</Flex>
 	);

@@ -232,15 +232,14 @@ export const createRecipeSourceForPlan = async ({
 
 	await db.execute(sql`
 		WITH plan_lock AS (
-			SELECT pg_advisory_xact_lock(hashtext(${validPlanId}))
+			SELECT pg_advisory_xact_lock(hashtext(${validPlanId})) AS locked
 		),
 		next_sort_order AS (
 			SELECT coalesce(max(${planRecipeSources.sortOrder}), -1) + 1 AS sort_order
-			FROM ${planRecipeSources}
+			FROM ${planRecipeSources}, plan_lock
 			WHERE ${planRecipeSources.planId} = ${validPlanId}
 		)
-		INSERT INTO ${planRecipeSources}
-			(${planRecipeSources.planId}, ${planRecipeSources.recipeSourceId}, ${planRecipeSources.sortOrder})
+		INSERT INTO "plan_recipe_sources" ("plan_id", "recipe_source_id", "sort_order")
 		SELECT ${validPlanId}, ${recipeSource.id}, next_sort_order.sort_order
 		FROM next_sort_order
 	`);

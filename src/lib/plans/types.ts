@@ -40,6 +40,30 @@ export type NormalizedRecipe = {
 	metadata?: Record<string, unknown>;
 };
 
+export type PlanGenerationRecipeInput = {
+	recipeSourceId: string;
+	sourceType: 'url' | 'manual';
+	sourceUrl: string | null;
+	title: string;
+	summary: string | null;
+	normalizedRecipe: NormalizedRecipe;
+};
+
+export type PlanGenerationOptions = {
+	requestedServings: number;
+	availableEquipment: string[];
+	constraints: string[];
+};
+
+export type PlanGenerationInput = {
+	planId: string;
+	title: string;
+	requestedServings: number;
+	availableEquipment: string[];
+	constraints: string[];
+	recipes: PlanGenerationRecipeInput[];
+};
+
 export type PlanTimer = {
 	id: string;
 	label: string;
@@ -57,10 +81,12 @@ export type PlanStep = {
 	id: string;
 	title: string;
 	description: string;
-	dependsOn: string[];
+	dependencies: string[];
 	estimatedMinutes: number;
+	canParallelize: boolean;
 	recipeSourceId?: string;
-	recovery?: string;
+	notesForUser?: string[];
+	recoveryTips?: string[];
 	ingredients?: PlanStepIngredientRef[];
 	outputs?: string[];
 	timers?: PlanTimer[];

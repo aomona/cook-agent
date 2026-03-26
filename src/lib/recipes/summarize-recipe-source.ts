@@ -62,7 +62,7 @@ export const summarizeRecipeSource = async ({
 		}),
 		providerOptions: {
 			openai: {
-				reasoningEffort: 'minimal',
+				reasoningEffort: 'low',
 				textVerbosity: 'low',
 			},
 		},

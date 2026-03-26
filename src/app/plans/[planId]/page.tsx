@@ -9,6 +9,8 @@ import {
 	getPlanStatusLabel,
 	getRecipeProcessingLabel,
 } from '@/lib/plans/presentation';
+import { getOwnedPlanEditorData } from '@/lib/plans/queries';
+import { DeletePlanButton } from './delete-plan-button';
 
 export default async function PlanDetailPage({ params }: { params: Promise<{ planId: string }> }) {
 	const cookieStore = await cookies();
@@ -20,8 +22,9 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 
 	const { planId } = await params;
 	const plan = await getCreatePlanData(planId, actor.userId);
+	const editorPlan = await getOwnedPlanEditorData(planId, actor.userId);
 
-	if (!plan) {
+	if (!plan || !editorPlan) {
 		notFound();
 	}
 
@@ -33,19 +36,22 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 						<Heading size="xl">{plan.title}</Heading>
 						<Text color="fg.subtle">作成した計画の概要と抽出済みレシピを確認できます。</Text>
 					</VStack>
-					<Flex gap="sm" wrap="wrap">
+					<Flex align={{ base: 'stretch', md: 'end' }} gap="sm" w={{ base: 'full', md: 'auto' }}>
 						<NextLink href="/">
 							<Button as="span" variant="ghost">
 								一覧に戻る
 							</Button>
 						</NextLink>
-						{plan.status === 'draft' ? (
-							<NextLink href={`/create/open/${plan.id}`}>
-								<Button as="span" variant="solid">
-									編集を続ける
-								</Button>
-							</NextLink>
-						) : null}
+						<Flex gap="sm" w="full" justify="end" wrap="wrap">
+							<DeletePlanButton planId={plan.id} />
+							{plan.status === 'draft' ? (
+								<NextLink href={`/create/open/${plan.id}`}>
+									<Button as="span" variant="solid">
+										編集を続ける
+									</Button>
+								</NextLink>
+							) : null}
+						</Flex>
 					</Flex>
 				</Flex>
 
@@ -97,6 +103,61 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 						))}
 					</VStack>
 				)}
+
+				{editorPlan.activeVersion ? (
+					<VStack align="stretch" gap="md">
+						<Flex align="center" justify="space-between" gap="sm" wrap="wrap">
+							<VStack align="stretch" gap="xs">
+								<Heading size="md">生成済み工程</Heading>
+								<Text color="fg.subtle">
+									v{editorPlan.activeVersion.versionNumber} /{' '}
+									{editorPlan.activeVersion.plan.servings}
+									人分 / {editorPlan.activeVersion.plan.steps.length} ステップ
+								</Text>
+							</VStack>
+							<NextLink href="/plan">
+								<Button as="span" variant="outline">
+									工程を再生成
+								</Button>
+							</NextLink>
+						</Flex>
+
+						{editorPlan.activeVersion.plan.steps.map((step, index) => (
+							<Card.Root key={step.id} variant="outline">
+								<Card.Body gap="sm">
+									<Flex align="start" justify="space-between" gap="sm" wrap="wrap">
+										<VStack align="stretch" gap="xs">
+											<Text color="fg.subtle" fontSize="sm">
+												STEP {index + 1}
+											</Text>
+											<Heading size="sm">{step.title}</Heading>
+										</VStack>
+										<Text color="fg.subtle">約{step.estimatedMinutes}分</Text>
+									</Flex>
+									<Text whiteSpace="pre-wrap">{step.description}</Text>
+									{step.dependencies.length > 0 ? (
+										<Text color="fg.subtle" fontSize="sm">
+											依存: {step.dependencies.join(', ')}
+										</Text>
+									) : null}
+									<Text color="fg.subtle" fontSize="sm">
+										並行実行: {step.canParallelize ? '可能' : '不可'}
+									</Text>
+									{step.notesForUser?.length ? (
+										<Text color="fg.subtle" fontSize="sm">
+											注意: {step.notesForUser.join(' / ')}
+										</Text>
+									) : null}
+									{step.recoveryTips?.length ? (
+										<Text color="fg.subtle" fontSize="sm">
+											リカバリー: {step.recoveryTips.join(' / ')}
+										</Text>
+									) : null}
+								</Card.Body>
+							</Card.Root>
+						))}
+					</VStack>
+				) : null}
 			</VStack>
 		</Flex>
 	);

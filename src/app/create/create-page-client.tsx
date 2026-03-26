@@ -329,6 +329,7 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 									<Text
 										color={recipe.title ? 'fg.subtle' : 'inherit'}
 										lineClamp={2}
+										overflowWrap="anywhere"
 										whiteSpace="pre-wrap"
 									>
 										{recipe.label}
