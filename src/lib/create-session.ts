@@ -49,10 +49,10 @@ const getRecipeLabel = ({
 	rawContent: RecipeSourceRawContent;
 }): string => {
 	if (sourceType === 'url') {
-		return sourceUrl ?? rawContent.url ?? '';
+		return sourceUrl ?? '';
 	}
 
-	return rawContent.inputText ?? '';
+	return rawContent.inputText ?? rawContent.title ?? '貼り付けたレシピテキスト';
 };
 export const getAuthenticatedUserId = async (): Promise<string | null> => {
 	const session = await auth.api.getSession({
@@ -195,13 +195,11 @@ export const createRecipeSourceForPlan = async ({
 
 	const sourceType = type === 'url' ? 'url' : 'manual';
 	const rawContent: RecipeSourceRawContent =
-		type === 'url'
+		type === 'text'
 			? {
-					url: value,
-				}
-			: {
 					inputText: value,
-				};
+				}
+			: {};
 
 	const [recipeSource] = await db
 		.insert(recipeSources)

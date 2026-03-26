@@ -76,7 +76,12 @@ const fetchSourceTextFromUrl = async (url: string): Promise<string> => {
 	return extractedText;
 };
 
-export const processRecipeSource = async (recipeSourceId: string): Promise<void> => {
+export const processRecipeSource = async (
+	recipeSourceId: string,
+	options?: {
+		sourceText?: string;
+	},
+): Promise<void> => {
 	const [recipeSource] = await db
 		.update(recipeSources)
 		.set({
@@ -103,22 +108,25 @@ export const processRecipeSource = async (recipeSourceId: string): Promise<void>
 	try {
 		const sourceText =
 			recipeSource.sourceType === 'url'
-				? await fetchSourceTextFromUrl(recipeSource.sourceUrl ?? recipeSource.rawContent.url ?? '')
-				: (recipeSource.rawContent.inputText?.trim() ?? '');
+				? await fetchSourceTextFromUrl(recipeSource.sourceUrl ?? '')
+				: (options?.sourceText?.trim() ?? recipeSource.rawContent.inputText?.trim() ?? '');
 
 		if (!sourceText) {
-			throw new Error('The recipe source did not contain any text to summarize.');
+			throw new Error('レシピテキストが見つかりません。再入力してください。');
 		}
 
 		const recipeSummary = await summarizeRecipeSource({
 			inputMode: recipeSource.sourceType === 'url' ? 'url' : 'text',
 			text: sourceText,
-			url: recipeSource.sourceUrl ?? recipeSource.rawContent.url,
+			url: recipeSource.sourceUrl ?? undefined,
 		});
 
 		const nextRawContent = {
-			...recipeSource.rawContent,
-			extractedText: sourceText,
+			...(recipeSource.sourceType === 'manual'
+				? {
+						inputText: recipeSource.rawContent.inputText ?? options?.sourceText?.trim(),
+					}
+				: {}),
 			title: recipeSummary.title,
 			description: recipeSummary.summary,
 			servingsText: recipeSummary.servingsText,

@@ -79,6 +79,7 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 	const [plan, setPlan] = useState<CreatePlanData>(initialPlan);
 	const [deletingRecipeIds, setDeletingRecipeIds] = useState<string[]>([]);
 	const processingRecipeIdsRef = useRef<Set<string>>(new Set());
+	const scheduledRecipeIdsRef = useRef<Set<string>>(new Set());
 
 	const modeItems = useMemo(
 		() => [
@@ -119,9 +120,16 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 
 	useEffect(() => {
 		for (const recipe of plan.recipes) {
-			if (recipe.processingStatus === 'queued' && !isTemporaryRecipeId(recipe.id)) {
-				void queueRecipeProcessing(recipe.id);
+			if (recipe.processingStatus !== 'queued') {
+				scheduledRecipeIdsRef.current.delete(recipe.id);
+				continue;
 			}
+
+			if (isTemporaryRecipeId(recipe.id) || scheduledRecipeIdsRef.current.has(recipe.id)) {
+				continue;
+			}
+
+			void queueRecipeProcessing(recipe.id);
 		}
 	}, [plan.recipes, queueRecipeProcessing]);
 
@@ -193,7 +201,10 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 				),
 			}));
 
-			void queueRecipeProcessing(payload.recipe.id);
+			scheduledRecipeIdsRef.current.add(payload.recipe.id);
+			window.setTimeout(() => {
+				scheduledRecipeIdsRef.current.delete(payload.recipe.id);
+			}, 5000);
 		} catch (error) {
 			setPlan((currentPlan) => ({
 				...currentPlan,

@@ -1,7 +1,5 @@
 export type RecipeSourceRawContent = {
-	url?: string;
 	inputText?: string;
-	extractedText?: string;
 	fetchedFrom?: string;
 	provider?: string;
 	title?: string;

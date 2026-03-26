@@ -42,7 +42,9 @@ export async function POST(request: Request, context: { params: Promise<{ planId
 		});
 
 		after(async () => {
-			await processRecipeSource(recipe.id);
+			await processRecipeSource(recipe.id, {
+				sourceText: body.type === 'text' ? value : undefined,
+			});
 		});
 
 		return Response.json({ recipe }, { status: 202 });
