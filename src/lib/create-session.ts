@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { planRecipeSources, plans, recipeSources } from '@/db/schema';
 import { auth } from '@/lib/auth';
 import type { RecipeProcessingStatus, RecipeSourceRawContent } from '@/lib/plans/types';
+import { parseUuid } from '@/lib/uuid';
 
 export type RecipeInputMode = 'url' | 'text';
 
@@ -98,6 +99,12 @@ export const getCreatePlanData = async (
 	planId: string,
 	userId: string,
 ): Promise<CreatePlanData | null> => {
+	const validPlanId = parseUuid(planId);
+
+	if (!validPlanId) {
+		return null;
+	}
+
 	const [plan] = await db
 		.select({
 			id: plans.id,
@@ -108,7 +115,7 @@ export const getCreatePlanData = async (
 			updatedAt: plans.updatedAt,
 		})
 		.from(plans)
-		.where(and(eq(plans.id, planId), eq(plans.userId, userId)));
+		.where(and(eq(plans.id, validPlanId), eq(plans.userId, userId)));
 
 	if (!plan) {
 		return null;
@@ -130,7 +137,7 @@ export const getCreatePlanData = async (
 		})
 		.from(planRecipeSources)
 		.innerJoin(recipeSources, eq(planRecipeSources.recipeSourceId, recipeSources.id))
-		.where(and(eq(planRecipeSources.planId, planId), eq(recipeSources.userId, userId)))
+		.where(and(eq(planRecipeSources.planId, validPlanId), eq(recipeSources.userId, userId)))
 		.orderBy(asc(planRecipeSources.sortOrder), asc(recipeSources.createdAt));
 
 	const recipes = recipeRows.map(
@@ -175,23 +182,23 @@ export const createRecipeSourceForPlan = async ({
 	type: RecipeInputMode;
 	value: string;
 }): Promise<CreateRecipeItem> => {
-	const [plan] = await db
-		.select({
-			id: plans.id,
-		})
-		.from(plans)
-		.where(and(eq(plans.id, planId), eq(plans.userId, userId)));
+	const validPlanId = parseUuid(planId);
 
-	if (!plan) {
+	if (!validPlanId) {
 		throw new Error('Plan not found.');
 	}
 
-	const [sortOrderRow] = await db
+	const [plan] = await db
 		.select({
-			nextSortOrder: sql<number>`coalesce(max(${planRecipeSources.sortOrder}), -1) + 1`,
+			id: plans.id,
+			status: plans.status,
 		})
-		.from(planRecipeSources)
-		.where(eq(planRecipeSources.planId, planId));
+		.from(plans)
+		.where(and(eq(plans.id, validPlanId), eq(plans.userId, userId)));
+
+	if (!plan || plan.status !== 'draft') {
+		throw new Error('Plan not found.');
+	}
 
 	const sourceType = type === 'url' ? 'url' : 'manual';
 	const rawContent: RecipeSourceRawContent =
@@ -223,11 +230,20 @@ export const createRecipeSourceForPlan = async ({
 			updatedAt: recipeSources.updatedAt,
 		});
 
-	await db.insert(planRecipeSources).values({
-		planId,
-		recipeSourceId: recipeSource.id,
-		sortOrder: sortOrderRow?.nextSortOrder ?? 0,
-	});
+	await db.execute(sql`
+		WITH plan_lock AS (
+			SELECT pg_advisory_xact_lock(hashtext(${validPlanId}))
+		),
+		next_sort_order AS (
+			SELECT coalesce(max(${planRecipeSources.sortOrder}), -1) + 1 AS sort_order
+			FROM ${planRecipeSources}
+			WHERE ${planRecipeSources.planId} = ${validPlanId}
+		)
+		INSERT INTO ${planRecipeSources}
+			(${planRecipeSources.planId}, ${planRecipeSources.recipeSourceId}, ${planRecipeSources.sortOrder})
+		SELECT ${validPlanId}, ${recipeSource.id}, next_sort_order.sort_order
+		FROM next_sort_order
+	`);
 
 	return {
 		id: recipeSource.id,
@@ -285,24 +301,23 @@ export const deleteRecipeSourceFromPlan = async ({
 		throw new Error('Recipe not found.');
 	}
 
-	await db
-		.delete(planRecipeSources)
-		.where(
-			and(
-				eq(planRecipeSources.planId, planId),
-				eq(planRecipeSources.recipeSourceId, recipeSourceId),
-			),
-		);
-
-	const [remainingLink] = await db
-		.select({
-			recipeSourceId: planRecipeSources.recipeSourceId,
-		})
-		.from(planRecipeSources)
-		.where(eq(planRecipeSources.recipeSourceId, recipeSourceId))
-		.limit(1);
-
-	if (!remainingLink) {
-		await db.delete(recipeSources).where(eq(recipeSources.id, recipeSourceId));
-	}
+	await db.execute(sql`
+		WITH recipe_lock AS (
+			SELECT pg_advisory_xact_lock(hashtext(${recipeSourceId}))
+		),
+		deleted_link AS (
+			DELETE FROM ${planRecipeSources}
+			WHERE ${planRecipeSources.planId} = ${planId}
+				AND ${planRecipeSources.recipeSourceId} = ${recipeSourceId}
+			RETURNING ${planRecipeSources.recipeSourceId}
+		)
+		DELETE FROM ${recipeSources}
+		WHERE ${recipeSources.id} = ${recipeSourceId}
+			AND EXISTS (SELECT 1 FROM deleted_link)
+			AND NOT EXISTS (
+				SELECT 1
+				FROM ${planRecipeSources}
+				WHERE ${planRecipeSources.recipeSourceId} = ${recipeSourceId}
+			)
+	`);
 };

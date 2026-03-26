@@ -15,6 +15,7 @@ import {
 	Text,
 	Textarea,
 	useDisclosure,
+	useNotice,
 	VStack,
 } from '@workspaces/ui';
 import NextLink from 'next/link';
@@ -80,6 +81,7 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 	const [deletingRecipeIds, setDeletingRecipeIds] = useState<string[]>([]);
 	const processingRecipeIdsRef = useRef<Set<string>>(new Set());
 	const scheduledRecipeIdsRef = useRef<Set<string>>(new Set());
+	const notice = useNotice();
 
 	const modeItems = useMemo(
 		() => [
@@ -193,6 +195,7 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 			}
 
 			const payload = (await response.json()) as { recipe: CreateRecipeItem };
+			scheduledRecipeIdsRef.current.add(payload.recipe.id);
 
 			setPlan((currentPlan) => ({
 				...currentPlan,
@@ -201,7 +204,6 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 				),
 			}));
 
-			scheduledRecipeIdsRef.current.add(payload.recipe.id);
 			window.setTimeout(() => {
 				scheduledRecipeIdsRef.current.delete(payload.recipe.id);
 			}, 5000);
@@ -267,6 +269,11 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 			}
 		} catch (error) {
 			await refreshPlan();
+			notice({
+				description: getErrorMessage(error),
+				status: 'error',
+				title: 'レシピを削除できませんでした',
+			});
 			throw error;
 		} finally {
 			setDeletingRecipeIds((currentIds) =>
