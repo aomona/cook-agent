@@ -6,11 +6,12 @@ import { z } from 'zod';
 import { getRequiredEnv } from '@/lib/env';
 import { planDocumentSchema } from '@/lib/plans/schema';
 import type { PlanDocument, PlanGenerationInput } from '@/lib/plans/types';
-import { extractHtmlText } from '@/lib/recipes/extract-html-text';
 
 const openai = createOpenAI({
 	apiKey: getRequiredEnv('OPENAI_API_KEY'),
 });
+const tavilyApiKey = getRequiredEnv('TAVILY_API_KEY');
+const tavilyBaseUrl = 'https://api.tavily.com';
 
 const plannerOutputSchema = z.object({
 	version: z.literal(1),
@@ -85,9 +86,47 @@ const plannerOutput = Output.object({
 	description: 'Structured cooking execution plan for a multi-step meal workflow.',
 });
 
-const fetchToolInputSchema = z.object({
-	recipeSourceId: z.string().uuid(),
+const webSearchToolInputSchema = z.object({
+	query: z.string().trim().min(1).max(240),
 	reason: z.string().trim().min(1).max(120),
+	includeDomains: z.array(z.string().trim().min(1).max(120)).max(10).optional(),
+	maxResults: z.number().int().min(1).max(8).optional(),
+});
+
+const fetchUrlToolInputSchema = z.object({
+	url: z.string().url(),
+	reason: z.string().trim().min(1).max(120),
+	query: z.string().trim().min(1).max(240).optional(),
+});
+
+const tavilySearchResultSchema = z.object({
+	title: z.string().catch(''),
+	url: z.string().url(),
+	content: z.string().catch(''),
+	raw_content: z.string().nullable().optional(),
+	score: z.number().nullable().optional(),
+	published_date: z.string().nullable().optional(),
+});
+
+const tavilySearchResponseSchema = z.object({
+	answer: z.string().nullable().optional(),
+	results: z.array(tavilySearchResultSchema),
+	request_id: z.string().optional(),
+	usage: z
+		.object({
+			credits: z.number().optional(),
+		})
+		.optional(),
+});
+
+const tavilyExtractResultSchema = z.object({
+	url: z.string().url(),
+	raw_content: z.string(),
+});
+
+const tavilyExtractResponseSchema = z.object({
+	results: z.array(tavilyExtractResultSchema),
+	request_id: z.string().optional(),
 });
 
 const truncateText = (value: string, maxLength: number): string =>
@@ -182,67 +221,99 @@ const assertSafeUrl = async (value: string): Promise<URL> => {
 	return url;
 };
 
-const fetchReadableText = async (
-	url: string,
-): Promise<{ text: string; contentType: string | null }> => {
-	const safeUrl = await assertSafeUrl(url);
-	const response = await fetch(safeUrl, {
+const postTavily = async <TSchema extends z.ZodTypeAny>({
+	path,
+	body,
+	schema,
+}: {
+	path: '/search' | '/extract';
+	body: Record<string, unknown>;
+	schema: TSchema;
+}): Promise<z.infer<TSchema>> => {
+	const response = await fetch(`${tavilyBaseUrl}${path}`, {
 		cache: 'no-store',
+		method: 'POST',
 		headers: {
-			'User-Agent': 'cook-agent/0.1 planner',
+			Authorization: `Bearer ${tavilyApiKey}`,
+			'Content-Type': 'application/json',
 		},
+		body: JSON.stringify(body),
 	});
 
 	if (!response.ok) {
-		throw new Error(`Failed to fetch URL (${response.status}).`);
+		throw new Error(
+			`Tavily ${path} failed (${response.status}): ${truncateText(await response.text(), 500)}`,
+		);
 	}
 
-	const contentType = response.headers.get('content-type');
-	const body = await response.text();
-
-	if (contentType?.includes('text/html')) {
-		return {
-			contentType,
-			text: extractHtmlText(body),
-		};
-	}
-
-	if (
-		contentType &&
-		!contentType.includes('text/plain') &&
-		!contentType.includes('application/json') &&
-		!contentType.includes('text/markdown')
-	) {
-		throw new Error('この URL はテキストとして利用できません。');
-	}
-
-	return {
-		contentType,
-		text: body.trim(),
-	};
+	return schema.parse(await response.json());
 };
 
-const createFetchRecipeSourceTool = (input: PlanGenerationInput) =>
+const createWebSearchTool = () =>
 	tool({
 		description:
-			'Fetch the original recipe page for one of the provided recipe sources when extra context is strictly necessary.',
-		inputSchema: fetchToolInputSchema,
-		execute: async ({ recipeSourceId }) => {
-			const recipe = input.recipes.find(
-				(currentRecipe) => currentRecipe.recipeSourceId === recipeSourceId,
-			);
-
-			if (!recipe?.sourceUrl) {
-				throw new Error('この recipeSourceId に対応する取得可能な URL はありません。');
-			}
-
-			const { contentType, text } = await fetchReadableText(recipe.sourceUrl);
+			'Search the public web with Tavily when the provided recipes are insufficient and you need outside cooking or food-safety context.',
+		inputSchema: webSearchToolInputSchema,
+		execute: async ({ query, includeDomains, maxResults }) => {
+			const response = await postTavily({
+				path: '/search',
+				body: {
+					query,
+					search_depth: 'basic',
+					topic: 'general',
+					max_results: maxResults ?? 5,
+					include_answer: false,
+					include_raw_content: false,
+					include_domains: includeDomains,
+				},
+				schema: tavilySearchResponseSchema,
+			});
 
 			return {
-				contentType,
-				recipeSourceId,
-				text: truncateText(text, 12000),
-				url: recipe.sourceUrl,
+				answer: response.answer ?? null,
+				creditsUsed: response.usage?.credits ?? null,
+				query,
+				requestId: response.request_id ?? null,
+				results: response.results.map((result) => ({
+					content: truncateText(result.content || result.raw_content || '', 1200),
+					publishedDate: result.published_date ?? null,
+					score: result.score ?? null,
+					title: result.title || result.url,
+					url: result.url,
+				})),
+			};
+		},
+	});
+
+const createFetchUrlTool = () =>
+	tool({
+		description:
+			'Fetch and extract plain text from a specific public URL with Tavily after you have identified a promising source.',
+		inputSchema: fetchUrlToolInputSchema,
+		execute: async ({ url, query }) => {
+			const safeUrl = await assertSafeUrl(url);
+			const response = await postTavily({
+				path: '/extract',
+				body: {
+					urls: [safeUrl.toString()],
+					extract_depth: 'basic',
+					format: 'text',
+					include_images: false,
+					include_favicon: false,
+					query,
+				},
+				schema: tavilyExtractResponseSchema,
+			});
+			const [result] = response.results;
+
+			if (!result) {
+				throw new Error('Tavily extract returned no results.');
+			}
+
+			return {
+				requestId: response.request_id ?? null,
+				text: truncateText(result.raw_content, 12000),
+				url: result.url,
 			};
 		},
 	});
@@ -253,9 +324,10 @@ const buildPrompt = (input: PlanGenerationInput): string =>
 		'The primary goal is to finish all dishes at the same time in a realistic kitchen workflow.',
 		'First think about the overall flow, then organize work across prep, heating, and assembly lanes.',
 		'Use the provided normalized recipes as the primary source of truth.',
-		'Do not search the open web.',
-		'Use tools only when the recipe data is insufficient and you need to re-read one of the original recipe URLs that was already provided.',
-		'Prefer conservative safe assumptions over fetching.',
+		'Use web tools sparingly and only when the recipe data is insufficient.',
+		'Use web_search to look up missing cooking knowledge, safety guidance, or equipment-specific technique.',
+		'Use fetch_url to inspect a specific source after search, or to re-read a recipe sourceUrl already present in the input.',
+		'Prefer conservative safe assumptions over unnecessary searching or fetching.',
 		'Respect available equipment and listed constraints. Never assume unavailable equipment.',
 		'Important rules:',
 		'- Output must be JSON only.',
@@ -297,7 +369,7 @@ export type PlannerStreamEvent =
 	| { type: 'reasoning'; delta: string }
 	| { type: 'tool'; message: string };
 
-const createPlannerAgent = (input: PlanGenerationInput) =>
+const createPlannerAgent = (_input: PlanGenerationInput) =>
 	new ToolLoopAgent({
 		model: openai('gpt-5.4-mini'),
 		maxOutputTokens: 100000,
@@ -309,12 +381,13 @@ const createPlannerAgent = (input: PlanGenerationInput) =>
 			'Plan kitchen work for a cooking prototype.',
 			'Think carefully about full-meal timing so dishes land together.',
 			'Think carefully about ordering, parallelism, timing, and failure recovery.',
-			'Do not search the open web.',
-			'Only fetch original recipe URLs that were already provided, and only when strictly necessary.',
+			'Use Tavily web tools only when missing information blocks a better plan.',
+			'Prefer the provided normalized recipes over web results whenever they are sufficient.',
 			'Keep the final plan grounded in the provided recipes and constraints.',
 		].join(' '),
 		tools: {
-			fetch_recipe_source: createFetchRecipeSourceTool(input),
+			fetch_url: createFetchUrlTool(),
+			web_search: createWebSearchTool(),
 		},
 		stopWhen: stepCountIs(6),
 		output: plannerOutput,
