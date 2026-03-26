@@ -1,12 +1,19 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { activeCreatePlanCookieName, createDraftPlan, getRequestActor } from '@/lib/create-session';
+import {
+	activeCreatePlanCookieName,
+	createDraftPlan,
+	getActiveCreatePlanId,
+	getRequestActor,
+} from '@/lib/create-session';
+import { getOwnedDraftPlan } from '@/lib/plans/queries';
 
 const cookieOptions = {
 	httpOnly: true,
 	maxAge: 60 * 60 * 24 * 30,
 	path: '/',
 	sameSite: 'lax' as const,
+	secure: process.env.NODE_ENV === 'production',
 };
 
 export async function GET(request: Request) {
@@ -15,6 +22,16 @@ export async function GET(request: Request) {
 
 	if (!actor) {
 		return NextResponse.redirect(new URL('/', request.url));
+	}
+
+	const existingPlanId = getActiveCreatePlanId(cookieStore);
+
+	if (existingPlanId) {
+		const existing = await getOwnedDraftPlan(existingPlanId, actor.userId);
+
+		if (existing) {
+			return NextResponse.redirect(new URL('/create', request.url));
+		}
 	}
 
 	const draftPlan = await createDraftPlan(actor.userId);
