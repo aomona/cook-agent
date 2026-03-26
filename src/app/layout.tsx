@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
-import { UIProvider } from '@workspaces/ui';
+import { Box, UIProvider } from '@workspaces/ui';
 
 const geistSans = Geist({
 	variable: '--font-geist-sans',
@@ -27,9 +27,13 @@ export default function RootLayout({
 		<html lang="ja" suppressHydrationWarning>
 			<body
 				suppressHydrationWarning
-				className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+				className={`${geistSans.variable} ${geistMono.variable} antialiased w-screen h-screen`}
 			>
-				<UIProvider>{children}</UIProvider>
+				<UIProvider>
+					<Box as="main" h="full">
+						{children}
+					</Box>
+				</UIProvider>
 			</body>
 		</html>
 	);
