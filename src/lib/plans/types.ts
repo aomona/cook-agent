@@ -1,14 +1,18 @@
 export type RecipeSourceRawContent = {
 	url?: string;
+	inputText?: string;
+	extractedText?: string;
 	fetchedFrom?: string;
 	provider?: string;
 	title?: string;
 	description?: string;
-	servingsText?: string;
+	servingsText?: string | null;
 	ingredientsText?: string[];
 	instructionsText?: string[];
 	metadata?: Record<string, unknown>;
 };
+
+export type RecipeProcessingStatus = 'queued' | 'processing' | 'completed' | 'failed';
 
 export type NormalizedIngredient = {
 	id: string;

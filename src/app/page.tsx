@@ -1,76 +1,129 @@
-'use client';
-
-import { Button, Card, Flex, For, Heading, LinkBox, Text, VStack } from '@workspaces/ui';
+import { Badge, Button, Card, Flex, For, Heading, Text, VStack } from '@workspaces/ui';
+import { headers } from 'next/headers';
 import NextLink from 'next/link';
+import { auth } from '@/lib/auth';
+import { getPlanListItems } from '@/lib/plans/queries';
+import { SignInButton } from './sign-in-button';
 
-const cookingPlans = [
-	{
-		id: 'plan-001',
-		name: '春野菜のパスタ献立',
-		duration: '45分',
-		createdAt: '2026/03/24 18:20',
-	},
-	{
-		id: 'plan-002',
-		name: '鶏の照り焼き定食',
-		duration: '60分',
-		createdAt: '2026/03/22 12:10',
-	},
-	{
-		id: 'plan-003',
-		name: '週末ブランチプレート',
-		duration: '35分',
-		createdAt: '2026/03/20 09:05',
-	},
-] as const;
+const formatDateTime = (value: string): string =>
+	new Intl.DateTimeFormat('ja-JP', {
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+		hour: '2-digit',
+		minute: '2-digit',
+	}).format(new Date(value));
 
-export default function Home() {
+const getStatusColorScheme = (status: 'draft' | 'ready' | 'archived'): string => {
+	if (status === 'ready') return 'green';
+	if (status === 'archived') return 'gray';
+
+	return 'blue';
+};
+
+const getStatusLabel = (status: 'draft' | 'ready' | 'archived'): string => {
+	if (status === 'ready') return 'READY';
+	if (status === 'archived') return 'ARCHIVED';
+
+	return 'DRAFT';
+};
+
+export default async function Home() {
+	const session = await auth.api.getSession({
+		headers: await headers(),
+	});
+
+	if (!session) {
+		return (
+			<Flex align="center" justify="center" minH="100vh" px="md">
+				<Card.Root maxW="lg" w="full" variant="outline">
+					<Card.Body gap="md" p="xl">
+						<VStack align="stretch" gap="xs">
+							<Heading size="xl">Cook Agent</Heading>
+							<Text color="fg.subtle">このアプリを使用するにはログインが必要です。</Text>
+						</VStack>
+						<SignInButton />
+					</Card.Body>
+				</Card.Root>
+			</Flex>
+		);
+	}
+
+	const plans = await getPlanListItems(session.user.id);
+
 	return (
-		<Flex align="center" h="full" justify="center" px="md">
+		<Flex align="center" justify="center" minH="100vh" px="md">
 			<VStack align="stretch" gap="lg" maxW="3xl" textAlign="left" w="full">
 				<Flex align="center" gap="md" justify="space-between">
 					<Heading size="xl">調理計画一覧</Heading>
-					<Button as={NextLink} href="/create" variant="solid">
-						新規作成
-					</Button>
+					<NextLink href="/create/start">
+						<Button as="span" variant="solid">
+							新規作成
+						</Button>
+					</NextLink>
 				</Flex>
 
-				<VStack align="stretch" gap="md">
-					<For each={cookingPlans}>
-						{(plan) => (
-							<LinkBox.Root
-								as={Card.Root}
-								key={plan.id}
-								transition="background-color 0.2s ease, transform 0.2s ease"
-								variant="outline"
-								_hover={{ bg: 'blackAlpha.50', transform: 'translateY(-1px)' }}
-							>
-								<Card.Body gap="sm">
-									<LinkBox.Overlay
-										as={NextLink}
-										color="black"
-										fontSize="lg"
-										fontWeight="semibold"
-										href={`/plans/${plan.id}`}
-										textDecoration="none"
-										_hover={{ opacity: 0.7 }}
+				{plans.length === 0 ? (
+					<Card.Root variant="outline">
+						<Card.Body gap="sm" p="xl">
+							<Heading size="md">まだ計画がありません</Heading>
+							<Text color="fg.subtle">
+								新規作成からレシピを追加すると、ここに計画一覧が表示されます。
+							</Text>
+						</Card.Body>
+					</Card.Root>
+				) : (
+					<VStack align="stretch" gap="md">
+						<For each={plans}>
+							{(plan) => (
+								<NextLink
+									key={plan.id}
+									href={`/plans/${plan.id}`}
+									style={{ color: 'inherit', textDecoration: 'none' }}
+								>
+									<Card.Root
+										transition="background-color 0.2s ease, transform 0.2s ease"
+										variant="outline"
+										_hover={{ bg: 'bg.subtle', transform: 'translateY(-1px)' }}
 									>
-										{plan.name}
-									</LinkBox.Overlay>
+										<Card.Body gap="sm">
+											<Flex align="start" justify="space-between" gap="sm" wrap="wrap">
+												<VStack align="stretch" gap="xs">
+													<Text fontSize="lg" fontWeight="semibold">
+														{plan.title}
+													</Text>
+													<Flex gap="sm" wrap="wrap">
+														<Badge colorScheme={getStatusColorScheme(plan.status)} variant="subtle">
+															{getStatusLabel(plan.status)}
+														</Badge>
+														{plan.requestedServings ? (
+															<Badge colorScheme="amber" variant="subtle">
+																{plan.requestedServings}人分
+															</Badge>
+														) : null}
+													</Flex>
+												</VStack>
+												<Text color="fg.subtle">更新: {formatDateTime(plan.updatedAt)}</Text>
+											</Flex>
 
-									<Flex
-										align={{ base: 'start', md: 'center' }}
-										direction={{ base: 'column', md: 'row' }}
-										gap={{ base: 'xs', md: 'md' }}
-									>
-										<Text color="GrayText">所要時間: {plan.duration}</Text>
-										<Text color="GrayText">作成日時: {plan.createdAt}</Text>
-									</Flex>
-								</Card.Body>
-							</LinkBox.Root>
-						)}
-					</For>
-				</VStack>
+											<Flex
+												align={{ base: 'start', md: 'center' }}
+												direction={{ base: 'column', md: 'row' }}
+												gap={{ base: 'xs', md: 'md' }}
+											>
+												<Text color="fg.subtle">レシピ: {plan.recipeCount}件</Text>
+												<Text color="fg.subtle">
+													抽出完了: {plan.completedRecipeCount}/{plan.recipeCount}
+												</Text>
+												<Text color="fg.subtle">作成: {formatDateTime(plan.createdAt)}</Text>
+											</Flex>
+										</Card.Body>
+									</Card.Root>
+								</NextLink>
+							)}
+						</For>
+					</VStack>
+				)}
 			</VStack>
 		</Flex>
 	);

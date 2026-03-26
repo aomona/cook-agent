@@ -1,15 +1,27 @@
-import { Button, Flex, Text } from '@workspaces/ui';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { getActiveCreatePlanId, getCreatePlanData, getRequestActor } from '@/lib/create-session';
+import { CreatePageClient } from './create-page-client';
 
-export default function Create() {
-	return (
-		<Flex align="center" h="full" justify="center" px="md">
-			<Flex align="start" direction="column" gap="md" maxW="4xl" textAlign="left" w="full">
-				<Text fontSize="xl">urlまたはテキストから、レシピの計画を生成します。</Text>
-				<Text color="GrayText">ここにレシピが追加されます</Text>
-				<Flex justify="end" w="full">
-					<Button variant="solid">レシピを追加</Button>
-				</Flex>
-			</Flex>
-		</Flex>
-	);
+export default async function CreatePage() {
+	const cookieStore = await cookies();
+	const actor = await getRequestActor(cookieStore);
+
+	if (!actor) {
+		redirect('/');
+	}
+
+	const planId = getActiveCreatePlanId(cookieStore);
+
+	if (!planId) {
+		redirect('/create/start');
+	}
+
+	const plan = await getCreatePlanData(planId, actor.userId);
+
+	if (!plan) {
+		redirect('/create/start');
+	}
+
+	return <CreatePageClient initialPlan={plan} />;
 }
