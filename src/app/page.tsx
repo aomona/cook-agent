@@ -1,65 +1,115 @@
-import Image from 'next/image';
+import { Badge, Button, Card, Flex, For, Heading, Text, VStack } from '@workspaces/ui';
+import { headers } from 'next/headers';
+import NextLink from 'next/link';
+import { auth } from '@/lib/auth';
+import {
+	formatPlanDateTime,
+	getPlanStatusColorScheme,
+	getPlanStatusLabel,
+} from '@/lib/plans/presentation';
+import { getPlanListItems } from '@/lib/plans/queries';
+import { SignInButton } from './sign-in-button';
 
-export default function Home() {
+export default async function Home() {
+	const session = await auth.api.getSession({
+		headers: await headers(),
+	});
+
+	if (!session) {
+		return (
+			<Flex align="center" justify="center" minH="100vh" px="md">
+				<Card.Root maxW="lg" w="full" variant="outline">
+					<Card.Body gap="md" p="xl">
+						<VStack align="stretch" gap="xs">
+							<Heading size="xl">Cook Agent</Heading>
+							<Text color="fg.subtle">このアプリを使用するにはログインが必要です。</Text>
+						</VStack>
+						<SignInButton />
+					</Card.Body>
+				</Card.Root>
+			</Flex>
+		);
+	}
+
+	const plans = await getPlanListItems(session.user.id);
+
 	return (
-		<div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-			<main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-				<Image
-					className="dark:invert"
-					src="/next.svg"
-					alt="Next.js logo"
-					width={100}
-					height={20}
-					priority
-				/>
-				<div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-					<h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-						To get started, edit the page.tsx file.
-					</h1>
-					<p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-						Looking for a starting point or more instructions? Head over to{' '}
-						<a
-							href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-							className="font-medium text-zinc-950 dark:text-zinc-50"
-						>
-							Templates
-						</a>{' '}
-						or the{' '}
-						<a
-							href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-							className="font-medium text-zinc-950 dark:text-zinc-50"
-						>
-							Learning
-						</a>{' '}
-						center.
-					</p>
-				</div>
-				<div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-					<a
-						className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-						href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-						target="_blank"
-						rel="noopener noreferrer"
-					>
-						<Image
-							className="dark:invert"
-							src="/vercel.svg"
-							alt="Vercel logomark"
-							width={16}
-							height={16}
-						/>
-						Deploy Now
-					</a>
-					<a
-						className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-						href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-						target="_blank"
-						rel="noopener noreferrer"
-					>
-						Documentation
-					</a>
-				</div>
-			</main>
-		</div>
+		<Flex align="center" justify="center" minH="100vh" px="md">
+			<VStack align="stretch" gap="lg" maxW="3xl" textAlign="left" w="full">
+				<Flex align="center" gap="md" justify="space-between">
+					<Heading size="xl">調理計画一覧</Heading>
+					<NextLink href="/create/start">
+						<Button as="span" variant="solid">
+							新規作成
+						</Button>
+					</NextLink>
+				</Flex>
+
+				{plans.length === 0 ? (
+					<Card.Root variant="outline">
+						<Card.Body gap="sm" p="xl">
+							<Heading size="md">まだ計画がありません</Heading>
+							<Text color="fg.subtle">
+								新規作成からレシピを追加すると、ここに計画一覧が表示されます。
+							</Text>
+						</Card.Body>
+					</Card.Root>
+				) : (
+					<VStack align="stretch" gap="md">
+						<For each={plans}>
+							{(plan) => (
+								<NextLink
+									key={plan.id}
+									href={`/plans/${plan.id}`}
+									style={{ color: 'inherit', textDecoration: 'none' }}
+								>
+									<Card.Root
+										transition="background-color 0.2s ease, transform 0.2s ease"
+										variant="outline"
+										_hover={{ bg: 'bg.subtle', transform: 'translateY(-1px)' }}
+									>
+										<Card.Body gap="sm">
+											<Flex align="start" justify="space-between" gap="sm" wrap="wrap">
+												<VStack align="stretch" gap="xs">
+													<Text fontSize="lg" fontWeight="semibold">
+														{plan.title}
+													</Text>
+													<Flex gap="sm" wrap="wrap">
+														<Badge
+															colorScheme={getPlanStatusColorScheme(plan.status)}
+															variant="subtle"
+														>
+															{getPlanStatusLabel(plan.status)}
+														</Badge>
+														{plan.requestedServings ? (
+															<Badge colorScheme="amber" variant="subtle">
+																{plan.requestedServings}人分
+															</Badge>
+														) : null}
+													</Flex>
+												</VStack>
+												<Text color="fg.subtle">更新: {formatPlanDateTime(plan.updatedAt)}</Text>
+											</Flex>
+
+											<Flex
+												align={{ base: 'start', md: 'center' }}
+												direction={{ base: 'column', md: 'row' }}
+												gap={{ base: 'xs', md: 'md' }}
+											>
+												<Text color="fg.subtle">レシピ: {plan.recipeCount}件</Text>
+												<Text color="fg.subtle">
+													抽出完了: {plan.completedRecipeCount}/{plan.recipeCount}
+												</Text>
+												<Text color="fg.subtle">作成: {formatPlanDateTime(plan.createdAt)}</Text>
+											</Flex>
+										</Card.Body>
+									</Card.Root>
+								</NextLink>
+							)}
+						</For>
+					</VStack>
+				)}
+			</VStack>
+		</Flex>
 	);
 }

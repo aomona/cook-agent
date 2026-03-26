@@ -16,12 +16,13 @@
 		"@ai-sdk/openai": "^3.0.41",
 		"@neondatabase/serverless": "^1.0.2",
 		"@workspaces/ui": "workspace:*",
-		"@yamada-ui/react": "^2.1.2",
+		"@yamada-ui/react": "^2.1.4",
 		"ai": "^6.0.116",
 		"better-auth": "^1.5.4",
 		"dotenv": "^17.3.1",
 		"drizzle-kit": "^0.31.9",
 		"drizzle-orm": "^0.45.1",
+		"htmlparser2": "^12.0.0",
 		"next": "16.1.6",
 		"react": "19.2.3",
 		"react-dom": "19.2.3",
@@ -29,7 +30,6 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.4.6",
-		"@tailwindcss/postcss": "^4",
 		"@testing-library/dom": "^10.4.1",
 		"@testing-library/react": "^16.3.2",
 		"@types/node": "^20",
@@ -38,7 +38,6 @@
 		"@vitejs/plugin-react": "^6.0.1",
 		"babel-plugin-react-compiler": "1.0.0",
 		"jsdom": "^28.1.0",
-		"tailwindcss": "^4",
 		"typescript": "^5",
 		"vitest": "^4.1.0"
 	}

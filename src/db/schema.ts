@@ -17,6 +17,7 @@ import type {
 	NormalizedRecipe,
 	PlanDocument,
 	PlanPatch,
+	RecipeProcessingStatus,
 	RecipeSourceRawContent,
 	SessionEventPayload,
 	SessionEventType,
@@ -26,6 +27,13 @@ import { user } from './auth-schema';
 export * from './auth-schema';
 
 export const recipeSourceTypeEnum = pgEnum('recipe_source_type', ['url', 'manual']);
+
+export const recipeProcessingStatusEnum = pgEnum('recipe_processing_status', [
+	'queued',
+	'processing',
+	'completed',
+	'failed',
+]);
 
 export const planStatusEnum = pgEnum('plan_status', ['draft', 'ready', 'archived']);
 
@@ -74,14 +82,21 @@ export const recipeSources = pgTable(
 		sourceType: recipeSourceTypeEnum('source_type').notNull().default('url'),
 		title: text('title'),
 		description: text('description'),
+		summary: text('summary'),
 		servingsText: text('servings_text'),
 		rawContent: jsonb('raw_content').$type<RecipeSourceRawContent>().notNull(),
 		normalizedRecipe: jsonb('normalized_recipe').$type<NormalizedRecipe>(),
+		processingStatus: recipeProcessingStatusEnum('processing_status')
+			.$type<RecipeProcessingStatus>()
+			.notNull()
+			.default('queued'),
+		processingError: text('processing_error'),
 		fetchedAt: timestamp('fetched_at', { withTimezone: true }),
 		...timestamps,
 	},
 	(table) => [
 		index('recipe_sources_user_id_created_at_idx').on(table.userId, table.createdAt),
+		index('recipe_sources_processing_status_idx').on(table.processingStatus),
 		index('recipe_sources_source_url_idx').on(table.sourceUrl),
 	],
 );
