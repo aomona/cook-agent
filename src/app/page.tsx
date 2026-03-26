@@ -2,31 +2,13 @@ import { Badge, Button, Card, Flex, For, Heading, Text, VStack } from '@workspac
 import { headers } from 'next/headers';
 import NextLink from 'next/link';
 import { auth } from '@/lib/auth';
+import {
+	formatPlanDateTime,
+	getPlanStatusColorScheme,
+	getPlanStatusLabel,
+} from '@/lib/plans/presentation';
 import { getPlanListItems } from '@/lib/plans/queries';
 import { SignInButton } from './sign-in-button';
-
-const formatDateTime = (value: string): string =>
-	new Intl.DateTimeFormat('ja-JP', {
-		year: 'numeric',
-		month: '2-digit',
-		day: '2-digit',
-		hour: '2-digit',
-		minute: '2-digit',
-	}).format(new Date(value));
-
-const getStatusColorScheme = (status: 'draft' | 'ready' | 'archived'): string => {
-	if (status === 'ready') return 'green';
-	if (status === 'archived') return 'gray';
-
-	return 'blue';
-};
-
-const getStatusLabel = (status: 'draft' | 'ready' | 'archived'): string => {
-	if (status === 'ready') return 'READY';
-	if (status === 'archived') return 'ARCHIVED';
-
-	return 'DRAFT';
-};
 
 export default async function Home() {
 	const session = await auth.api.getSession({
@@ -93,8 +75,11 @@ export default async function Home() {
 														{plan.title}
 													</Text>
 													<Flex gap="sm" wrap="wrap">
-														<Badge colorScheme={getStatusColorScheme(plan.status)} variant="subtle">
-															{getStatusLabel(plan.status)}
+														<Badge
+															colorScheme={getPlanStatusColorScheme(plan.status)}
+															variant="subtle"
+														>
+															{getPlanStatusLabel(plan.status)}
 														</Badge>
 														{plan.requestedServings ? (
 															<Badge colorScheme="amber" variant="subtle">
@@ -103,7 +88,7 @@ export default async function Home() {
 														) : null}
 													</Flex>
 												</VStack>
-												<Text color="fg.subtle">更新: {formatDateTime(plan.updatedAt)}</Text>
+												<Text color="fg.subtle">更新: {formatPlanDateTime(plan.updatedAt)}</Text>
 											</Flex>
 
 											<Flex
@@ -115,7 +100,7 @@ export default async function Home() {
 												<Text color="fg.subtle">
 													抽出完了: {plan.completedRecipeCount}/{plan.recipeCount}
 												</Text>
-												<Text color="fg.subtle">作成: {formatDateTime(plan.createdAt)}</Text>
+												<Text color="fg.subtle">作成: {formatPlanDateTime(plan.createdAt)}</Text>
 											</Flex>
 										</Card.Body>
 									</Card.Root>

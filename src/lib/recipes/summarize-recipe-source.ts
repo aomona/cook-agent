@@ -35,7 +35,7 @@ export const summarizeRecipeSource = async ({
 	url?: string;
 }): Promise<RecipeSummaryResult> => {
 	const { output: recipeSummary } = await generateText({
-		model: openai('gpt-5-nano'),
+		model: openai('gpt-5.4-nano'),
 		system: [
 			'You summarize recipe sources for a cooking-planning prototype.',
 			'Return structured JSON that a later AI can reuse.',

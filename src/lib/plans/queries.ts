@@ -1,6 +1,7 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { planRecipeSources, plans, recipeSources } from '@/db/schema';
+import { parseUuid } from '@/lib/uuid';
 
 export type PlanListItem = {
 	id: string;
@@ -55,12 +56,18 @@ export const getOwnedDraftPlan = async (
 	planId: string,
 	userId: string,
 ): Promise<{ id: string } | null> => {
+	const validPlanId = parseUuid(planId);
+
+	if (!validPlanId) {
+		return null;
+	}
+
 	const [plan] = await db
 		.select({
 			id: plans.id,
 		})
 		.from(plans)
-		.where(and(eq(plans.id, planId), eq(plans.userId, userId), eq(plans.status, 'draft')));
+		.where(and(eq(plans.id, validPlanId), eq(plans.userId, userId), eq(plans.status, 'draft')));
 
 	return plan ?? null;
 };

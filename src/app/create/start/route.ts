@@ -24,17 +24,11 @@ export async function GET(request: Request) {
 		return NextResponse.redirect(new URL('/', request.url));
 	}
 
-	const existingPlanId = getActiveCreatePlanId(cookieStore);
-
-	if (existingPlanId) {
-		const existing = await getOwnedDraftPlan(existingPlanId, actor.userId);
-
-		if (existing) {
-			return NextResponse.redirect(new URL('/create', request.url));
-		}
-	}
-
-	const draftPlan = await createDraftPlan(actor.userId);
+	const activePlanId = getActiveCreatePlanId(cookieStore);
+	const existingDraftPlan = activePlanId
+		? await getOwnedDraftPlan(activePlanId, actor.userId)
+		: null;
+	const draftPlan = existingDraftPlan ?? (await createDraftPlan(actor.userId));
 	const response = NextResponse.redirect(new URL('/create', request.url));
 
 	response.cookies.set(activeCreatePlanCookieName, draftPlan.id, cookieOptions);

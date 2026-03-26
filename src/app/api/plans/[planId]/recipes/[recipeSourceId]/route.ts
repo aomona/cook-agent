@@ -7,12 +7,22 @@ const routeParamsSchema = z.object({
 	recipeSourceId: z.string().uuid(),
 });
 
-const getErrorMessage = (error: unknown): string => {
-	if (error instanceof Error && error.message) {
-		return error.message;
+const getDeleteRecipeErrorResponse = (
+	error: unknown,
+): { message: string; status: number; shouldLog?: boolean } => {
+	if (error instanceof z.ZodError) {
+		return { message: 'Invalid recipe identifier.', status: 400 };
 	}
 
-	return 'Failed to delete recipe.';
+	if (error instanceof Error) {
+		if (error.message === 'Recipe not found.' || error.message === 'Plan not found.') {
+			return { message: error.message, status: 404 };
+		}
+
+		return { message: 'Failed to delete recipe.', status: 500, shouldLog: true };
+	}
+
+	return { message: 'Failed to delete recipe.', status: 500, shouldLog: true };
 };
 
 export async function DELETE(
@@ -37,12 +47,11 @@ export async function DELETE(
 
 		return new Response(null, { status: 204 });
 	} catch (error) {
-		if (error instanceof z.ZodError) {
-			return Response.json({ message: 'Invalid recipe identifier.' }, { status: 400 });
-		}
+		const { message, shouldLog, status } = getDeleteRecipeErrorResponse(error);
 
-		const message = getErrorMessage(error);
-		const status = message === 'Recipe not found.' || message === 'Plan not found.' ? 404 : 400;
+		if (shouldLog) {
+			console.error(error);
+		}
 
 		return Response.json({ message }, { status });
 	}

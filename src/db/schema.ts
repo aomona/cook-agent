@@ -96,6 +96,7 @@ export const recipeSources = pgTable(
 	},
 	(table) => [
 		index('recipe_sources_user_id_created_at_idx').on(table.userId, table.createdAt),
+		index('recipe_sources_processing_status_idx').on(table.processingStatus),
 		index('recipe_sources_source_url_idx').on(table.sourceUrl),
 	],
 );

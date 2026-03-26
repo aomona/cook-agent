@@ -31,12 +31,21 @@ export async function POST(
 	const [recipeSource] = await db
 		.select({
 			id: recipeSources.id,
+			processingStatus: recipeSources.processingStatus,
 		})
 		.from(recipeSources)
 		.where(and(eq(recipeSources.id, recipeSourceId), eq(recipeSources.userId, actor.userId)));
 
 	if (!recipeSource) {
 		return Response.json({ message: 'Recipe source not found.' }, { status: 404 });
+	}
+
+	if (recipeSource.processingStatus === 'processing') {
+		return Response.json({ status: 'processing' }, { status: 200 });
+	}
+
+	if (recipeSource.processingStatus === 'completed') {
+		return Response.json({ status: 'completed' }, { status: 200 });
 	}
 
 	after(async () => {

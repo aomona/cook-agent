@@ -4,10 +4,16 @@ import { z } from 'zod';
 import { createRecipeSourceForPlan, getRequestActor } from '@/lib/create-session';
 import { processRecipeSource } from '@/lib/recipes/process-recipe-source';
 
-const addRecipeSchema = z.object({
-	type: z.enum(['url', 'text']),
-	value: z.string().trim().min(1),
-});
+const addRecipeSchema = z.discriminatedUnion('type', [
+	z.object({
+		type: z.literal('url'),
+		value: z.string().trim().url('有効なURLを入力してください。'),
+	}),
+	z.object({
+		type: z.literal('text'),
+		value: z.string().trim().min(1),
+	}),
+]);
 
 const getErrorMessage = (error: unknown): string => {
 	if (error instanceof Error && error.message) {
@@ -50,9 +56,15 @@ export async function POST(request: Request, context: { params: Promise<{ planId
 		return Response.json({ recipe }, { status: 202 });
 	} catch (error) {
 		if (error instanceof z.ZodError) {
-			return Response.json({ message: 'Invalid recipe input.' }, { status: 400 });
+			return Response.json(
+				{ message: error.issues[0]?.message ?? 'Invalid recipe input.' },
+				{ status: 400 },
+			);
 		}
 
-		return Response.json({ message: getErrorMessage(error) }, { status: 400 });
+		const message = getErrorMessage(error);
+		const status = message === 'Plan not found.' ? 404 : 400;
+
+		return Response.json({ message }, { status });
 	}
 }

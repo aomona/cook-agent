@@ -3,29 +3,12 @@ import { cookies } from 'next/headers';
 import NextLink from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getCreatePlanData, getRequestActor } from '@/lib/create-session';
-
-const formatDateTime = (value: string): string =>
-	new Intl.DateTimeFormat('ja-JP', {
-		year: 'numeric',
-		month: '2-digit',
-		day: '2-digit',
-		hour: '2-digit',
-		minute: '2-digit',
-	}).format(new Date(value));
-
-const getStatusColorScheme = (status: 'draft' | 'ready' | 'archived'): string => {
-	if (status === 'ready') return 'green';
-	if (status === 'archived') return 'gray';
-
-	return 'blue';
-};
-
-const getStatusLabel = (status: 'draft' | 'ready' | 'archived'): string => {
-	if (status === 'ready') return 'READY';
-	if (status === 'archived') return 'ARCHIVED';
-
-	return 'DRAFT';
-};
+import {
+	formatPlanDateTime,
+	getPlanStatusColorScheme,
+	getPlanStatusLabel,
+	getRecipeProcessingLabel,
+} from '@/lib/plans/presentation';
 
 export default async function PlanDetailPage({ params }: { params: Promise<{ planId: string }> }) {
 	const cookieStore = await cookies();
@@ -69,17 +52,17 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 				<Card.Root variant="outline">
 					<Card.Body gap="md">
 						<Flex align="center" gap="sm" wrap="wrap">
-							<Badge colorScheme={getStatusColorScheme(plan.status)} variant="subtle">
-								{getStatusLabel(plan.status)}
+							<Badge colorScheme={getPlanStatusColorScheme(plan.status)} variant="subtle">
+								{getPlanStatusLabel(plan.status)}
 							</Badge>
-							<Text color="fg.subtle">更新日時: {formatDateTime(plan.updatedAt)}</Text>
+							<Text color="fg.subtle">更新日時: {formatPlanDateTime(plan.updatedAt)}</Text>
 						</Flex>
 						<Flex gap="md" wrap="wrap">
 							<Text color="fg.subtle">レシピ数: {plan.recipes.length}</Text>
 							<Text color="fg.subtle">
 								人数: {plan.requestedServings ? `${plan.requestedServings}人分` : '未設定'}
 							</Text>
-							<Text color="fg.subtle">作成日時: {formatDateTime(plan.createdAt)}</Text>
+							<Text color="fg.subtle">作成日時: {formatPlanDateTime(plan.createdAt)}</Text>
 						</Flex>
 					</Card.Body>
 				</Card.Root>
@@ -101,11 +84,7 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 											{recipe.type === 'url' ? 'URL' : 'TEXT'}
 										</Badge>
 										<Text color="fg.subtle">
-											{recipe.processingStatus === 'completed'
-												? '抽出完了'
-												: recipe.processingStatus === 'failed'
-													? '抽出失敗'
-													: '抽出中'}
+											{getRecipeProcessingLabel(recipe.processingStatus)}
 										</Text>
 									</Flex>
 									<Heading size="md">{recipe.title ?? recipe.label}</Heading>
