@@ -92,4 +92,56 @@ describe('scaleIngredientLine', () => {
 			}),
 		).toBe('卵 (2個)');
 	});
+
+	test('scales full-width digits and japanese measure words', () => {
+		expect(
+			scaleIngredientLine({
+				baseServings: 2,
+				ingredient: {
+					id: 'ingredient-1',
+					name: '★醤油 大さじ２',
+				},
+				requestedServings: 4,
+			}),
+		).toBe('★醤油 大さじ4');
+	});
+
+	test('scales quantity ranges in ingredient lines', () => {
+		expect(
+			scaleIngredientLine({
+				baseServings: 2,
+				ingredient: {
+					id: 'ingredient-1',
+					name: '鶏モモ肉 小１枚（100〜125g）',
+				},
+				requestedServings: 4,
+			}),
+		).toBe('鶏モモ肉 小2枚（200〜250g）');
+	});
+
+	test('scales decimal quantities embedded in ingredient names', () => {
+		expect(
+			scaleIngredientLine({
+				baseServings: 2,
+				ingredient: {
+					id: 'ingredient-1',
+					name: '玉ねぎ 0.25個（50g）',
+				},
+				requestedServings: 4,
+			}),
+		).toBe('玉ねぎ 0.5個（100g）');
+	});
+
+	test('scales full-width ranges', () => {
+		expect(
+			scaleIngredientLine({
+				baseServings: 2,
+				ingredient: {
+					id: 'ingredient-1',
+					name: '卵 ３〜４個',
+				},
+				requestedServings: 4,
+			}),
+		).toBe('卵 6〜8個');
+	});
 });

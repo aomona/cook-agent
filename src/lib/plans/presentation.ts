@@ -51,8 +51,14 @@ const formatScaledNumber = (value: number): string => {
 	return rounded.toFixed(2).replace(/\.?0+$/, '');
 };
 
+const normalizeNumericToken = (token: string): string =>
+	token
+		.replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+		.replace(/．/g, '.')
+		.replace(/／/g, '/');
+
 const parseNumericToken = (token: string): number | null => {
-	const normalizedToken = token.trim();
+	const normalizedToken = normalizeNumericToken(token).trim();
 
 	if (/^\d+\s+\d+\/\d+$/.test(normalizedToken)) {
 		const [wholePart, fractionPart] = normalizedToken.split(/\s+/, 2);
@@ -80,6 +86,30 @@ const parseNumericToken = (token: string): number | null => {
 	return Number.isFinite(parsedNumber) ? parsedNumber : null;
 };
 
+const scaleQuantityExpression = (expression: string, scaleFactor: number): string => {
+	const rangeMatch = expression.match(/^(.*?)(\s*[〜~]\s*)(.*)$/);
+
+	if (rangeMatch) {
+		const [, leftSide, separator, rightSide] = rangeMatch;
+		const leftValue = parseNumericToken(leftSide);
+		const rightValue = parseNumericToken(rightSide);
+
+		if (leftValue === null || rightValue === null) {
+			return expression;
+		}
+
+		return `${formatScaledNumber(leftValue * scaleFactor)}${separator}${formatScaledNumber(rightValue * scaleFactor)}`;
+	}
+
+	const parsedValue = parseNumericToken(expression);
+
+	if (parsedValue === null) {
+		return expression;
+	}
+
+	return formatScaledNumber(parsedValue * scaleFactor);
+};
+
 export const scaleIngredientLine = ({
 	baseServings,
 	ingredient,
@@ -102,13 +132,8 @@ export const scaleIngredientLine = ({
 
 	const scaleFactor = requestedServings / baseServings;
 
-	return line.replace(/\d+(?:\s+\d+\/\d+|\/\d+|\.\d+)?/g, (token) => {
-		const parsedNumber = parseNumericToken(token);
-
-		if (parsedNumber === null) {
-			return token;
-		}
-
-		return formatScaledNumber(parsedNumber * scaleFactor);
-	});
+	return line.replace(
+		/[0-9０-９]+(?:\s+[0-9０-９]+\/[0-9０-９]+|\/[0-9０-９]+|\.[0-9０-９]+)?(?:\s*[〜~]\s*[0-9０-９]+(?:\s+[0-9０-９]+\/[0-9０-９]+|\/[0-9０-９]+|\.[0-9０-９]+)?)?/g,
+		(token) => scaleQuantityExpression(token, scaleFactor),
+	);
 };
