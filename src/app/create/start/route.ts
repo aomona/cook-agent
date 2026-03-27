@@ -6,6 +6,7 @@ import {
 	getActiveCreatePlanId,
 	getRequestActor,
 } from '@/lib/create-session';
+import { isProduction } from '@/lib/env';
 import { getOwnedDraftPlan } from '@/lib/plans/queries';
 
 const cookieOptions = {
@@ -13,7 +14,7 @@ const cookieOptions = {
 	maxAge: 60 * 60 * 24 * 30,
 	path: '/',
 	sameSite: 'lax' as const,
-	secure: process.env.NODE_ENV === 'production',
+	secure: isProduction,
 };
 
 export async function GET(request: Request) {

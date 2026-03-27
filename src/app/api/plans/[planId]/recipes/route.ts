@@ -28,6 +28,8 @@ const normalizeUrl = (value: string): string => {
 	return url.toString();
 };
 
+export const runtime = 'nodejs';
+
 export async function POST(request: Request, context: { params: Promise<{ planId: string }> }) {
 	const cookieStore = await cookies();
 	const actor = await getRequestActor(cookieStore);

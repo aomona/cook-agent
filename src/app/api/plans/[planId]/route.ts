@@ -5,6 +5,7 @@ import {
 	getCreatePlanData,
 	getRequestActor,
 } from '@/lib/create-session';
+import { isProduction } from '@/lib/env';
 import { deleteOwnedPlan } from '@/lib/plans/queries';
 
 export async function GET(_request: Request, context: { params: Promise<{ planId: string }> }) {
@@ -48,7 +49,7 @@ export async function DELETE(_request: Request, context: { params: Promise<{ pla
 			maxAge: 0,
 			path: '/',
 			sameSite: 'lax',
-			secure: process.env.NODE_ENV === 'production',
+			secure: isProduction,
 		});
 	}
 

@@ -1,3 +1,6 @@
-import { drizzle } from 'drizzle-orm/neon-http';
+import 'server-only';
 
-export const db = drizzle(process.env.DATABASE_URL as string);
+import { drizzle } from 'drizzle-orm/neon-http';
+import { getRequiredEnv } from '@/lib/env';
+
+export const db = drizzle(getRequiredEnv('DATABASE_URL'));

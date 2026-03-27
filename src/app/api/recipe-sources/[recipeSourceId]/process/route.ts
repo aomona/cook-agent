@@ -9,6 +9,8 @@ import { processRecipeSource } from '@/lib/recipes/process-recipe-source';
 
 const recipeSourceIdSchema = z.string().uuid();
 
+export const runtime = 'nodejs';
+
 export async function POST(
 	_request: Request,
 	context: { params: Promise<{ recipeSourceId: string }> },
