@@ -1,4 +1,5 @@
 import { Badge, Card, Flex, Heading, Text, VStack } from '@workspaces/ui';
+import { formatStructuredAmount } from '@/lib/plans/presentation';
 import { isCleanupPlanStep } from '@/lib/plans/step-tags';
 import type { PlanDocument } from '@/lib/plans/types';
 
@@ -53,7 +54,9 @@ export const PlanStepCards = ({
 	const materialLabelById = Object.fromEntries(
 		plan.materials.map((material) => [
 			material.id,
-			material.amount ? `${material.name} (${material.amount})` : material.name,
+			formatStructuredAmount(material)
+				? `${material.name} (${formatStructuredAmount(material)})`
+				: material.name,
 		]),
 	);
 

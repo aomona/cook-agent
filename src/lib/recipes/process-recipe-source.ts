@@ -4,12 +4,8 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { recipeSources } from '@/db/schema';
 import { assertSafePublicHttpUrl } from '@/lib/network/safe-url';
-import type {
-	NormalizedIngredient,
-	NormalizedRecipe,
-	NormalizedRecipeStep,
-} from '@/lib/plans/types';
 import { extractHtmlText } from '@/lib/recipes/extract-html-text';
+import { normalizeRecipeSummary } from '@/lib/recipes/normalize-recipe-summary';
 import { summarizeRecipeSource } from '@/lib/recipes/summarize-recipe-source';
 
 const getErrorMessage = (error: unknown): string => {
@@ -24,51 +20,6 @@ const assertSafeRecipeUrl = async (value: string): Promise<URL> => {
 	return assertSafePublicHttpUrl(value, {
 		invalidProtocolMessage: 'HTTP または HTTPS のレシピ URL を入力してください。',
 	});
-};
-
-const normalizeRecipe = ({
-	title,
-	summary,
-	servingsText,
-	ingredientsText,
-	instructionsText,
-}: {
-	title: string;
-	summary: string;
-	servingsText?: string | null;
-	ingredientsText: string[];
-	instructionsText: string[];
-}): NormalizedRecipe | undefined => {
-	if (ingredientsText.length === 0 && instructionsText.length === 0) {
-		return undefined;
-	}
-
-	const ingredients: NormalizedIngredient[] = ingredientsText.map((ingredient, index) => ({
-		id: `ingredient-${index + 1}`,
-		name: ingredient,
-	}));
-
-	const steps: NormalizedRecipeStep[] = instructionsText.map((instruction, index) => ({
-		id: `step-${index + 1}`,
-		order: index + 1,
-		text: instruction,
-	}));
-
-	return {
-		title,
-		description: summary,
-		servings: (() => {
-			if (!servingsText) {
-				return undefined;
-			}
-
-			const parsedServings = Number.parseInt(servingsText, 10);
-
-			return Number.isNaN(parsedServings) ? undefined : parsedServings;
-		})(),
-		ingredients,
-		steps,
-	};
 };
 
 const fetchSourceTextFromUrl = async (url: string): Promise<string> => {
@@ -149,6 +100,7 @@ export const processRecipeSource = async (
 			description: recipeSummary.summary,
 			servingsText: recipeSummary.servingsText,
 			ingredientsText: recipeSummary.ingredientsText,
+			materials: recipeSummary.materials,
 			instructionsText: recipeSummary.instructionsText,
 		};
 
@@ -160,11 +112,12 @@ export const processRecipeSource = async (
 				summary: recipeSummary.summary,
 				servingsText: recipeSummary.servingsText ?? null,
 				rawContent: nextRawContent,
-				normalizedRecipe: normalizeRecipe({
+				normalizedRecipe: normalizeRecipeSummary({
 					title: recipeSummary.title,
 					summary: recipeSummary.summary,
 					servingsText: recipeSummary.servingsText,
 					ingredientsText: recipeSummary.ingredientsText,
+					materials: recipeSummary.materials,
 					instructionsText: recipeSummary.instructionsText,
 				}),
 				fetchedAt: recipeSource.sourceType === 'url' ? new Date() : null,

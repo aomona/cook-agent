@@ -31,8 +31,27 @@ export const getRecipeProcessingLabel = (status: RecipeProcessingStatus): string
 	return '抽出中';
 };
 
+type QuantityLike = Pick<
+	NormalizedIngredient,
+	'amount' | 'amountMax' | 'amountMin' | 'amountValue' | 'unit'
+>;
+
+export const formatStructuredAmount = (ingredient: QuantityLike): string | undefined => {
+	if (typeof ingredient.amountValue === 'number') {
+		return `${formatScaledNumber(ingredient.amountValue)}${ingredient.unit ?? ''}`;
+	}
+
+	if (typeof ingredient.amountMin === 'number' && typeof ingredient.amountMax === 'number') {
+		return `${formatScaledNumber(ingredient.amountMin)}~${formatScaledNumber(ingredient.amountMax)}${ingredient.unit ?? ''}`;
+	}
+
+	return ingredient.amount;
+};
+
 export const formatIngredientLine = (ingredient: NormalizedIngredient): string => {
-	const suffix = [ingredient.amount, ingredient.preparation].filter(Boolean).join(' / ');
+	const suffix = [formatStructuredAmount(ingredient), ingredient.preparation]
+		.filter(Boolean)
+		.join(' / ');
 
 	if (!suffix) {
 		return ingredient.name;
@@ -131,6 +150,28 @@ export const scaleIngredientLine = ({
 	}
 
 	const scaleFactor = requestedServings / baseServings;
+	const scaledStructuredAmount = (() => {
+		if (typeof ingredient.amountValue === 'number') {
+			return `${formatScaledNumber(ingredient.amountValue * scaleFactor)}${ingredient.unit ?? ''}`;
+		}
+
+		if (typeof ingredient.amountMin === 'number' && typeof ingredient.amountMax === 'number') {
+			return `${formatScaledNumber(ingredient.amountMin * scaleFactor)}~${formatScaledNumber(ingredient.amountMax * scaleFactor)}${ingredient.unit ?? ''}`;
+		}
+
+		return null;
+	})();
+
+	if (scaledStructuredAmount) {
+		return formatIngredientLine({
+			...ingredient,
+			amount: scaledStructuredAmount,
+			amountMax: undefined,
+			amountMin: undefined,
+			amountValue: undefined,
+			unit: undefined,
+		});
+	}
 
 	return line.replace(
 		/[0-9０-９]+(?:\s+[0-9０-９]+\/[0-9０-９]+|\/[0-9０-９]+|\.[0-9０-９]+)?(?:\s*[〜~]\s*[0-9０-９]+(?:\s+[0-9０-９]+\/[0-9０-９]+|\/[0-9０-９]+|\.[0-9０-９]+)?)?/g,

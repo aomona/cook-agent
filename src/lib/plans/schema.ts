@@ -52,6 +52,10 @@ export const planMaterialSchema = z.object({
 	id: z.string().trim().min(1).max(120),
 	name: z.string().trim().min(1).max(160),
 	amount: nullableOptional(z.string().trim().min(1).max(120)),
+	amountValue: nullableOptional(z.number().positive().max(100000)),
+	amountMin: nullableOptional(z.number().positive().max(100000)),
+	amountMax: nullableOptional(z.number().positive().max(100000)),
+	unit: nullableOptional(z.string().trim().min(1).max(40)),
 	recipeSourceId: nullableOptional(z.uuid()),
 	sourceIngredientId: nullableOptional(z.string().trim().min(1).max(120)),
 }) satisfies z.ZodType<PlanMaterial>;

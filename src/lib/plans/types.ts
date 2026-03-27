@@ -1,7 +1,15 @@
+export type RecipeSourceMaterialAmountSummary = {
+	text?: string | null;
+	value?: number | null;
+	min?: number | null;
+	max?: number | null;
+	unit?: string | null;
+};
+
 export type RecipeSourceMaterialSummary = {
 	rawLine?: string | null;
 	name: string;
-	amount?: string | null;
+	amount?: RecipeSourceMaterialAmountSummary | null;
 	preparation?: string | null;
 	optional?: boolean | null;
 };
@@ -25,6 +33,10 @@ export type NormalizedIngredient = {
 	id: string;
 	name: string;
 	amount?: string;
+	amountValue?: number;
+	amountMin?: number;
+	amountMax?: number;
+	unit?: string;
 	preparation?: string;
 	optional?: boolean;
 	substitutions?: string[];
@@ -53,6 +65,10 @@ export type PlanMaterial = {
 	id: string;
 	name: string;
 	amount?: string;
+	amountValue?: number;
+	amountMin?: number;
+	amountMax?: number;
+	unit?: string;
 	recipeSourceId?: string;
 	sourceIngredientId?: string;
 };

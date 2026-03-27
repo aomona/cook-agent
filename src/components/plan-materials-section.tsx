@@ -1,4 +1,5 @@
 import { Card, Heading, Text, VStack } from '@workspaces/ui';
+import { formatStructuredAmount } from '@/lib/plans/presentation';
 import type { PlanDocument } from '@/lib/plans/types';
 
 export const PlanMaterialsSection = ({
@@ -35,7 +36,7 @@ export const PlanMaterialsSection = ({
 						{materials.map((material) => (
 							<Text key={material.id} whiteSpace="pre-wrap">
 								・{material.name}
-								{material.amount ? ` (${material.amount})` : ''}
+								{formatStructuredAmount(material) ? ` (${formatStructuredAmount(material)})` : ''}
 							</Text>
 						))}
 					</Card.Body>
