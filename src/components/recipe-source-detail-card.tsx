@@ -72,11 +72,19 @@ export const RecipeSourceDetailModal = ({
 							<Card.Body gap="xs">
 								<Heading size="sm">ソース</Heading>
 								{recipe.type === 'url' ? (
-									<Link href={recipe.label} rel="noreferrer" target="_blank">
+									<Link
+										href={recipe.label}
+										overflowWrap="anywhere"
+										rel="noreferrer"
+										target="_blank"
+										whiteSpace="pre-wrap"
+									>
 										{recipe.label}
 									</Link>
 								) : (
-									<Text whiteSpace="pre-wrap">{recipe.label}</Text>
+									<Text overflowWrap="anywhere" whiteSpace="pre-wrap">
+										{recipe.label}
+									</Text>
 								)}
 							</Card.Body>
 						</Card.Root>
