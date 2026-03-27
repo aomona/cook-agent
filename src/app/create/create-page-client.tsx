@@ -139,6 +139,7 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 			label: value,
 			title: null,
 			summary: null,
+			normalizedRecipe: null,
 			normalizedServings: null,
 			processingStatus: 'queued',
 			processingError: null,
@@ -186,6 +187,7 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 					recipe.id === optimisticRecipe.id
 						? {
 								...recipe,
+								normalizedRecipe: null,
 								normalizedServings: null,
 								processingStatus: 'failed',
 								processingError: getErrorMessage(error),

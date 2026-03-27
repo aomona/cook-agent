@@ -18,6 +18,7 @@ export type CreateRecipeItem = {
 	label: string;
 	title: string | null;
 	summary: string | null;
+	normalizedRecipe: NormalizedRecipe | null;
 	normalizedServings: number | null;
 	processingStatus: RecipeProcessingStatus;
 	processingError: string | null;
@@ -167,6 +168,7 @@ export const getCreatePlanData = async (
 			}),
 			title: recipe.title,
 			summary: recipe.summary,
+			normalizedRecipe: recipe.normalizedRecipe,
 			normalizedServings: recipe.normalizedRecipe?.servings ?? null,
 			processingStatus: recipe.processingStatus,
 			processingError: recipe.processingError,
@@ -279,6 +281,7 @@ export const createRecipeSourceForPlan = async ({
 		}),
 		title: recipeSource.title,
 		summary: recipeSource.summary,
+		normalizedRecipe: recipeSource.normalizedRecipe,
 		normalizedServings: recipeSource.normalizedRecipe?.servings ?? null,
 		processingStatus: recipeSource.processingStatus,
 		processingError: recipeSource.processingError,
@@ -382,6 +385,7 @@ export const updateRecipeServingsForPlan = async ({
 		}),
 		title: updatedRecipe.title,
 		summary: updatedRecipe.summary,
+		normalizedRecipe: updatedRecipe.normalizedRecipe,
 		normalizedServings: updatedRecipe.normalizedRecipe?.servings ?? null,
 		processingStatus: updatedRecipe.processingStatus,
 		processingError: updatedRecipe.processingError,
