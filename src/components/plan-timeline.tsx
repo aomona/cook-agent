@@ -1,31 +1,15 @@
 'use client';
 
 import { Badge, Card, ClientOnly, Flex, ScrollArea, Text, VStack } from '@workspaces/ui';
-import { computeConflicts, getResourceLabel } from '@/lib/plans/scheduler';
+import { useState } from 'react';
+import { computeConflicts } from '@/lib/plans/scheduler';
 import { buildPlanTimelineData } from '@/lib/plans/timeline';
-import type { PlanDocument, PlanStep } from '@/lib/plans/types';
+import type { PlanDocument } from '@/lib/plans/types';
 
 type PlanTimelineProps = {
 	plan: PlanDocument;
 	recipeTitleById: Record<string, string>;
 	editable?: boolean;
-};
-
-const getKindColor = (kind: PlanStep['kind']): string => {
-	switch (kind) {
-		case 'cleanup':
-			return '#475569';
-		case 'cook':
-			return '#2563eb';
-		case 'finish':
-			return '#8b5cf6';
-		case 'prep':
-			return '#10b981';
-		case 'wait':
-			return '#22c55e';
-		default:
-			return '#475569';
-	}
 };
 
 const getTimelineMaxMinutes = (totalMinutes: number): number => {
@@ -71,13 +55,8 @@ const deriveCapacity = (plan: PlanDocument): Record<string, number> => {
 			).length || 1,
 	};
 };
-
-const formatReq = (req: Record<string, number>): string =>
-	Object.entries(req)
-		.map(([resource, amount]) => `${getResourceLabel(resource)}:${amount}`)
-		.join(' / ');
-
 export const PlanTimeline = ({ editable = false, plan, recipeTitleById }: PlanTimelineProps) => {
+	const [zoomPercent, setZoomPercent] = useState(100);
 	const { items, totalMinutes } = buildPlanTimelineData({
 		plan,
 		recipeTitleById,
@@ -85,7 +64,6 @@ export const PlanTimeline = ({ editable = false, plan, recipeTitleById }: PlanTi
 	const maxMinutes = getTimelineMaxMinutes(totalMinutes);
 	const marks = getTimeMarks(maxMinutes);
 	const conflicts = computeConflicts(plan.steps, deriveCapacity(plan));
-	const timelineMinWidth = Math.max(maxMinutes * 14, 840);
 
 	return (
 		<Card.Root variant="outline">
@@ -103,6 +81,9 @@ export const PlanTimeline = ({ editable = false, plan, recipeTitleById }: PlanTi
 						<Badge colorScheme="blue" variant="subtle">
 							計画 {totalMinutes} 分
 						</Badge>
+						<Badge colorScheme="blackAlpha" variant="subtle">
+							横幅 {zoomPercent}%
+						</Badge>
 						{editable ? (
 							<Badge colorScheme="amber" variant="subtle">
 								編集モード
@@ -110,6 +91,10 @@ export const PlanTimeline = ({ editable = false, plan, recipeTitleById }: PlanTi
 						) : null}
 					</Flex>
 				</Flex>
+
+				<Text color="fg.subtle" fontSize="sm">
+					タイムライン上は手順番号のみ表示します。`Ctrl + スクロール` で横方向だけ拡大できます。
+				</Text>
 
 				{conflicts.length > 0 ? (
 					<Card.Root borderColor="red.200" bg="red.50" variant="outline">
@@ -131,115 +116,98 @@ export const PlanTimeline = ({ editable = false, plan, recipeTitleById }: PlanTi
 				) : null}
 
 				<ClientOnly fallback={<Text color="fg.subtle">タイムラインを読み込んでいます。</Text>}>
-					<ScrollArea h="34rem" w="full">
-						<div className="plan-timeline-shell" style={{ minWidth: `${timelineMinWidth}px` }}>
-							<div className="plan-timeline-ruler">
-								<div className="plan-timeline-ruler-labels">
-									{marks.map((mark) => (
-										<span key={mark}>{mark}分</span>
-									))}
+					<div
+						onWheel={(event) => {
+							if (!event.ctrlKey) {
+								return;
+							}
+
+							event.preventDefault();
+							setZoomPercent((currentZoom) => {
+								const delta = event.deltaY < 0 ? 10 : -10;
+								return Math.min(300, Math.max(100, currentZoom + delta));
+							});
+						}}
+					>
+						<ScrollArea h="34rem" w="full">
+							<div
+								className="plan-timeline-shell"
+								style={{ minWidth: '100%', width: `${zoomPercent}%` }}
+							>
+								<div className="plan-timeline-ruler">
+									<div className="plan-timeline-ruler-labels">
+										{marks.map((mark) => (
+											<span key={mark}>{mark}分</span>
+										))}
+									</div>
+									<div className="plan-timeline-ruler-track">
+										{marks.map((mark) => (
+											<div
+												key={mark}
+												className="plan-timeline-grid-line"
+												style={{ left: `${(mark / maxMinutes) * 100}%` }}
+											/>
+										))}
+										{conflicts.map((conflict) => (
+											<div
+												key={`${conflict.res}-${conflict.start}-${conflict.end}`}
+												className="plan-timeline-conflict"
+												style={{
+													left: `${(conflict.start / maxMinutes) * 100}%`,
+													width: `${((conflict.end - conflict.start) / maxMinutes) * 100}%`,
+												}}
+											/>
+										))}
+									</div>
 								</div>
-								<div className="plan-timeline-ruler-track">
-									{marks.map((mark) => (
-										<div
-											key={mark}
-											className="plan-timeline-grid-line"
-											style={{ left: `${(mark / maxMinutes) * 100}%` }}
-										/>
-									))}
-									{conflicts.map((conflict) => (
-										<div
-											key={`${conflict.res}-${conflict.start}-${conflict.end}`}
-											className="plan-timeline-conflict"
-											style={{
-												left: `${(conflict.start / maxMinutes) * 100}%`,
-												width: `${((conflict.end - conflict.start) / maxMinutes) * 100}%`,
-											}}
-										/>
-									))}
-								</div>
-							</div>
 
-							<div className="plan-timeline-rows">
-								{items.map((item) => {
-									const recipeLabel = item.recipeSourceId
-										? (recipeTitleById[item.recipeSourceId] ?? item.recipeSourceId)
-										: null;
-									const left = (item.startMinute / maxMinutes) * 100;
-									const width = ((item.endMinute - item.startMinute) / maxMinutes) * 100;
-									const slackWidth =
-										item.slack > 0 ? ((item.durationMinutes + item.slack) / maxMinutes) * 100 : 0;
+								<div className="plan-timeline-rows">
+									{items.map((item) => {
+										const left = (item.startMinute / maxMinutes) * 100;
+										const width = ((item.endMinute - item.startMinute) / maxMinutes) * 100;
+										const slackWidth =
+											item.slack > 0 ? ((item.durationMinutes + item.slack) / maxMinutes) * 100 : 0;
 
-									return (
-										<div key={item.id} className="plan-timeline-row">
-											<div className="plan-timeline-row-track">
-												{marks.map((mark) => (
+										return (
+											<div key={item.id} className="plan-timeline-row">
+												<div className="plan-timeline-row-index">{item.stepNumber}</div>
+												<div className="plan-timeline-row-track">
+													{marks.map((mark) => (
+														<div
+															key={`${item.id}-${mark}`}
+															className="plan-timeline-row-grid-line"
+															style={{ left: `${(mark / maxMinutes) * 100}%` }}
+														/>
+													))}
+
+													{item.slack > 0 ? (
+														<div
+															className="plan-timeline-step-slack"
+															style={{
+																left: `${left}%`,
+																width: `${slackWidth}%`,
+															}}
+														/>
+													) : null}
+
 													<div
-														key={`${item.id}-${mark}`}
-														className="plan-timeline-row-grid-line"
-														style={{ left: `${(mark / maxMinutes) * 100}%` }}
-													/>
-												))}
-
-												{item.slack > 0 ? (
-													<div
-														className="plan-timeline-step-slack"
+														className="plan-timeline-step-bar"
 														style={{
+															background: item.groupColor,
 															left: `${left}%`,
-															width: `${slackWidth}%`,
+															width: `${Math.max(width, 2.8)}%`,
 														}}
-													/>
-												) : null}
-
-												<div
-													className="plan-timeline-step-bar"
-													style={{
-														background:
-															item.groupColor || getKindColor(item.kind as PlanStep['kind']),
-														left: `${left}%`,
-														width: `${Math.max(width, 2.8)}%`,
-													}}
-												>
-													<span className="plan-timeline-step-text">
-														{recipeLabel ? `[${recipeLabel}] ` : ''}
-														{item.title}
-													</span>
-												</div>
-
-												<div className="plan-timeline-row-meta">
-													<Text fontSize="sm">
-														{recipeLabel ? `[${recipeLabel}] ` : ''}
-														{item.title}
-													</Text>
-													<Flex align="center" gap="xs" wrap="wrap">
-														<Badge
-															colorScheme={item.isCleanup ? 'blackAlpha' : 'blue'}
-															variant="subtle"
-														>
-															{item.kind}
-														</Badge>
-														{Object.keys(item.req).length > 0 ? (
-															<Badge colorScheme="blackAlpha" variant="subtle">
-																{formatReq(item.req)}
-															</Badge>
-														) : null}
-														{item.slack > 0 ? (
-															<Badge colorScheme="green" variant="subtle">
-																slack {item.slack}分
-															</Badge>
-														) : null}
-													</Flex>
-													<Text color="fg.subtle" fontSize="sm">
-														{item.startMinute}-{item.endMinute}分
-													</Text>
+													>
+														<span className="plan-timeline-step-text">{item.stepNumber}</span>
+													</div>
 												</div>
 											</div>
-										</div>
-									);
-								})}
+										);
+									})}
+								</div>
 							</div>
-						</div>
-					</ScrollArea>
+						</ScrollArea>
+					</div>
 				</ClientOnly>
 			</Card.Body>
 		</Card.Root>

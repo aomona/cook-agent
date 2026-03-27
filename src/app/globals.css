@@ -86,7 +86,21 @@ body {
 .plan-timeline-row {
 	position: relative;
 	display: grid;
-	gap: 0.35rem;
+	grid-template-columns: 2.5rem minmax(0, 1fr);
+	align-items: center;
+	gap: 0.75rem;
+}
+
+.plan-timeline-row-index {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 2.5rem;
+	border-radius: 0.7rem;
+	background: color-mix(in srgb, currentColor 6%, white);
+	color: color-mix(in srgb, currentColor 70%, transparent);
+	font-size: 0.95rem;
+	font-weight: 700;
 }
 
 .plan-timeline-row-track {
@@ -120,17 +134,12 @@ body {
 }
 
 .plan-timeline-step-text {
+	display: block;
+	width: 100%;
+	text-align: center;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	font-size: 0.95rem;
 	font-weight: 700;
-}
-
-.plan-timeline-row-meta {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 0.75rem;
-	padding-inline: 0.25rem;
 }
