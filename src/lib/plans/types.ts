@@ -1,3 +1,11 @@
+export type RecipeSourceMaterialSummary = {
+	rawLine?: string | null;
+	name: string;
+	amount?: string | null;
+	preparation?: string | null;
+	optional?: boolean | null;
+};
+
 export type RecipeSourceRawContent = {
 	inputText?: string;
 	fetchedFrom?: string;
@@ -6,6 +14,7 @@ export type RecipeSourceRawContent = {
 	description?: string;
 	servingsText?: string | null;
 	ingredientsText?: string[];
+	materials?: RecipeSourceMaterialSummary[];
 	instructionsText?: string[];
 	metadata?: Record<string, unknown>;
 };
