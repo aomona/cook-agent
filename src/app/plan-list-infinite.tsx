@@ -1,8 +1,9 @@
 'use client';
 
-import { Badge, Card, Flex, For, InfiniteScrollArea, Loading, Text, VStack } from '@workspaces/ui';
+import { Badge, Card, Flex, For, InfiniteScrollArea, Text, VStack } from '@workspaces/ui';
 import NextLink from 'next/link';
 import { useMemo, useState } from 'react';
+import { AppSpinner } from '@/components/app-spinner';
 import {
 	formatPlanDateTime,
 	getPlanStatusColorScheme,
@@ -31,7 +32,7 @@ export const PlanListInfinite = ({ plans }: { plans: PlanListItem[] }) => {
 			}
 			loading={
 				<Flex justify="center" py="md">
-					<Loading.Oval color="blue.500" fontSize="lg" />
+					<AppSpinner />
 				</Flex>
 			}
 			onLoad={({ finish }) => {

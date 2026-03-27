@@ -1,7 +1,8 @@
 'use client';
 
-import { Button, Card, Flex, For, Loading, Modal, Text, VStack } from '@workspaces/ui';
+import { Button, Card, Flex, For, Modal, Text, VStack } from '@workspaces/ui';
 import type { RefObject } from 'react';
+import { AppSpinner } from '@/components/app-spinner';
 
 export const PlannerProgressModal = ({
 	isGenerating,
@@ -53,7 +54,7 @@ export const PlannerProgressModal = ({
 								: '生成ログを確認できます。'}
 						</Text>
 					</VStack>
-					{isGenerating ? <Loading.Oval color="blue.500" fontSize="lg" /> : null}
+					{isGenerating ? <AppSpinner /> : null}
 				</Flex>
 			</Modal.Header>
 			<Modal.Body px="lg" py="md">

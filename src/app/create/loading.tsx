@@ -1,4 +1,5 @@
-import { Card, Flex, Loading, Text, VStack } from '@workspaces/ui';
+import { Card, Flex, Text, VStack } from '@workspaces/ui';
+import { AppSpinner } from '@/components/app-spinner';
 
 export default function CreateLoading() {
 	return (
@@ -6,7 +7,7 @@ export default function CreateLoading() {
 			<Card.Root maxW="xl" variant="outline" w="full">
 				<Card.Body gap="md" p="xl">
 					<Flex align="center" gap="sm">
-						<Loading.Oval color="blue.500" fontSize="lg" />
+						<AppSpinner />
 						<Text fontWeight="semibold">作成中の計画を読み込んでいます</Text>
 					</Flex>
 					<VStack align="stretch" gap="xs">

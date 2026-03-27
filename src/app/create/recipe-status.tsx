@@ -1,6 +1,7 @@
 'use client';
 
-import { Button, Flex, Loading, Status, Text } from '@workspaces/ui';
+import { Button, Flex, Status, Text } from '@workspaces/ui';
+import { AppSpinner } from '@/components/app-spinner';
 import type { CreateRecipeItem } from '@/lib/create-session';
 
 const pendingStatuses = new Set(['queued', 'processing']);
@@ -38,7 +39,7 @@ export const RecipeStatus = ({
 
 	return (
 		<Flex align="center" color="fg.subtle" gap="sm">
-			<Loading.Oval color="blue.500" fontSize="lg" />
+			<AppSpinner />
 			<Text fontSize="sm">レシピを抽出中...</Text>
 		</Flex>
 	);
