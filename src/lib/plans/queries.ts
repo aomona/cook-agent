@@ -7,6 +7,7 @@ import type {
 	PlanDocument,
 	PlanGenerationInput,
 	PlanGenerationOptions,
+	PlanMaterial,
 } from '@/lib/plans/types';
 import { parseUuid } from '@/lib/uuid';
 
@@ -48,7 +49,19 @@ export type PlanEditorData = {
 	updatedAt: string;
 	recipes: PlanRecipeSnapshot[];
 	activeVersion: ActivePlanVersionData | null;
+	hasIncompatibleActiveVersion?: boolean;
 };
+
+const buildPlanMaterials = (recipes: PlanRecipeSnapshot[]): PlanMaterial[] =>
+	recipes.flatMap((recipe) =>
+		(recipe.normalizedRecipe?.ingredients ?? []).map((ingredient) => ({
+			id: `${recipe.id}:${ingredient.id}`,
+			name: ingredient.name,
+			amount: ingredient.amount,
+			recipeSourceId: recipe.id,
+			sourceIngredientId: ingredient.id,
+		})),
+	);
 
 const getRecipeLabel = ({
 	sourceType,
@@ -224,6 +237,7 @@ export const getOwnedPlanEditorData = async (
 		createdAt: plan.createdAt.toISOString(),
 		updatedAt: plan.updatedAt.toISOString(),
 		recipes,
+		hasIncompatibleActiveVersion: Boolean(activeVersion && !parsedActivePlan?.success),
 		activeVersion:
 			activeVersion && parsedActivePlan?.success
 				? {
@@ -274,6 +288,7 @@ export const buildPlanGenerationInput = async ({
 		requestedServings: options.requestedServings,
 		availableEquipment: options.availableEquipment,
 		constraints: options.constraints,
+		materials: buildPlanMaterials(plan.recipes),
 		recipes: plan.recipes.map((recipe) => ({
 			recipeSourceId: recipe.id,
 			sourceType: recipe.type === 'url' ? 'url' : 'manual',

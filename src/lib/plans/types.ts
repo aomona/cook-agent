@@ -40,6 +40,14 @@ export type NormalizedRecipe = {
 	metadata?: Record<string, unknown>;
 };
 
+export type PlanMaterial = {
+	id: string;
+	name: string;
+	amount?: string;
+	recipeSourceId?: string;
+	sourceIngredientId?: string;
+};
+
 export type PlanGenerationRecipeInput = {
 	recipeSourceId: string;
 	sourceType: 'url' | 'manual';
@@ -61,6 +69,7 @@ export type PlanGenerationInput = {
 	requestedServings: number;
 	availableEquipment: string[];
 	constraints: string[];
+	materials: PlanMaterial[];
 	recipes: PlanGenerationRecipeInput[];
 };
 
@@ -77,34 +86,47 @@ export type PlanTimer = {
 	autoStart?: boolean;
 };
 
-export type PlanStepIngredientRef = {
-	ingredientId: string;
-	preparation?: string;
-	quantity?: string;
+export type PlanStepKind = 'prep' | 'cook' | 'finish' | 'wait' | 'cleanup';
+
+export type PlanStepTimeline = {
+	start: number;
+	end: number;
+};
+
+export type PlanStepResourceRequirements = Record<string, number>;
+
+export type PlanMetadata = {
+	availableEquipment: string[];
+	constraints: string[];
+	recipeSourceIds: string[];
 };
 
 export type PlanStep = {
 	id: string;
-	title: string;
-	description: string;
-	dependencies: string[];
-	estimatedMinutes: number;
-	canParallelize: boolean;
+	label: string;
+	instructions: string;
+	timeline: PlanStepTimeline;
+	time: number;
+	after: string[];
+	kind: PlanStepKind;
 	recipeSourceId?: string;
+	req?: PlanStepResourceRequirements;
+	uses?: string[];
+	slack?: number;
 	notesForUser?: string[];
 	recoveryTips?: string[];
-	ingredients?: PlanStepIngredientRef[];
 	outputs?: string[];
 	timers?: PlanTimer[];
 	tags?: string[];
 };
 
 export type PlanDocument = {
-	version: number;
+	version: 2;
 	title: string;
 	servings: number;
+	materials: PlanMaterial[];
 	steps: PlanStep[];
-	metadata?: Record<string, unknown>;
+	metadata?: PlanMetadata;
 };
 
 export type PlanPatchOperation = {
