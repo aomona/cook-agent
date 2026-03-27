@@ -1,9 +1,9 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getActiveCreatePlanId, getCreatePlanData, getRequestActor } from '@/lib/create-session';
-import { CreatePageClient } from './create-page-client';
+import { ServingsPageClient } from './servings-page-client';
 
-export default async function CreatePage() {
+export default async function CreateServingsPage() {
 	const cookieStore = await cookies();
 	const actor = await getRequestActor(cookieStore);
 
@@ -23,9 +23,5 @@ export default async function CreatePage() {
 		redirect('/create/start');
 	}
 
-	if (!plan.requestedServings) {
-		redirect('/create/servings');
-	}
-
-	return <CreatePageClient initialPlan={plan} />;
+	return <ServingsPageClient initialPlan={plan} />;
 }

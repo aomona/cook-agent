@@ -3,7 +3,7 @@ import { z } from 'zod';
 import {
 	deleteRecipeSourceFromPlan,
 	getRequestActor,
-	updateRecipeServingsForPlan,
+	updateRecipeBaseServingsForPlan,
 } from '@/lib/create-session';
 
 const routeParamsSchema = z.object({
@@ -65,7 +65,7 @@ export async function PATCH(
 	try {
 		const params = routeParamsSchema.parse(await context.params);
 		const body = updateRecipeServingsSchema.parse(await request.json());
-		const recipe = await updateRecipeServingsForPlan({
+		const recipe = await updateRecipeBaseServingsForPlan({
 			planId: params.planId,
 			recipeSourceId: params.recipeSourceId,
 			servings: body.servings,

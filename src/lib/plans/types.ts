@@ -63,6 +63,32 @@ export type NormalizedRecipe = {
 	metadata?: Record<string, unknown>;
 };
 
+export type RecipeAdjustmentStatus =
+	| 'idle'
+	| 'needs_base_servings'
+	| 'adjusting'
+	| 'completed'
+	| 'action_required';
+
+export type RecipeStepChangeType =
+	| 'quantity'
+	| 'heat'
+	| 'time'
+	| 'batching'
+	| 'equipment'
+	| 'sequence'
+	| 'safety'
+	| 'wording';
+
+export type RecipeStepChangeConfidence = 'low' | 'medium' | 'high';
+
+export type RecipeStepChange = {
+	stepId: string;
+	changeType: RecipeStepChangeType;
+	reason: string;
+	confidence: RecipeStepChangeConfidence;
+};
+
 export type PlanMaterial = {
 	id: string;
 	name: string;

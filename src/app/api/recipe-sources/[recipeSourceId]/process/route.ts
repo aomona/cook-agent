@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { db } from '@/db';
 import { recipeSources } from '@/db/schema';
 import { getRequestActor } from '@/lib/create-session';
-import { processRecipeSource } from '@/lib/recipes/process-recipe-source';
+import { processRecipeSourceAndSyncPlans } from '@/lib/recipes/process-recipe-source';
 
 const recipeSourceIdSchema = z.uuid();
 
@@ -51,7 +51,7 @@ export async function POST(
 	}
 
 	after(async () => {
-		await processRecipeSource(recipeSource.id);
+		await processRecipeSourceAndSyncPlans(recipeSource.id);
 	});
 
 	return Response.json({ status: 'queued' }, { status: 202 });

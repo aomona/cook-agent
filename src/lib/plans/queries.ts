@@ -4,13 +4,19 @@ import { planRecipeSources, plans, planVersions, recipeSources } from '@/db/sche
 import { mergePlannerContext } from '@/lib/planning-settings';
 import { getUserPlanningSettingsState } from '@/lib/planning-settings-queries';
 import { scalePlanMaterial } from '@/lib/plans/presentation';
-import { planDocumentSchema } from '@/lib/plans/schema';
+import {
+	normalizedRecipeSchema,
+	planDocumentSchema,
+	recipeStepChangeSchema,
+} from '@/lib/plans/schema';
 import type {
 	NormalizedRecipe,
 	PlanDocument,
 	PlanGenerationInput,
 	PlanGenerationOptions,
 	PlanMaterial,
+	RecipeAdjustmentStatus,
+	RecipeStepChange,
 } from '@/lib/plans/types';
 import { parseUuid } from '@/lib/uuid';
 
@@ -41,6 +47,12 @@ export type PlanRecipeSnapshot = {
 	summary: string | null;
 	processingStatus: 'queued' | 'processing' | 'completed' | 'failed';
 	normalizedRecipe: NormalizedRecipe | null;
+	adjustedRecipe: NormalizedRecipe | null;
+	adjustedForServings: number | null;
+	adjustmentStatus: RecipeAdjustmentStatus;
+	adjustmentError: string | null;
+	baseServings: number | null;
+	stepChanges: RecipeStepChange[];
 };
 
 export type PlanEditorData = {
@@ -59,8 +71,13 @@ const buildPlanMaterials = (
 	recipes: PlanRecipeSnapshot[],
 	requestedServings: number,
 ): PlanMaterial[] =>
-	recipes.flatMap((recipe) =>
-		(recipe.normalizedRecipe?.ingredients ?? []).map((ingredient) =>
+	recipes.flatMap((recipe) => {
+		const sourceIngredients =
+			recipe.adjustedRecipe?.servings === requestedServings
+				? recipe.adjustedRecipe.ingredients
+				: (recipe.normalizedRecipe?.ingredients ?? []);
+
+		return sourceIngredients.map((ingredient) =>
 			scalePlanMaterial(
 				{
 					id: `${recipe.id}:${ingredient.id}`,
@@ -73,11 +90,25 @@ const buildPlanMaterials = (
 					recipeSourceId: recipe.id,
 					sourceIngredientId: ingredient.id,
 				},
-				recipe.normalizedRecipe?.servings,
+				recipe.adjustedRecipe?.servings === requestedServings
+					? requestedServings
+					: (recipe.baseServings ?? recipe.normalizedRecipe?.servings),
 				requestedServings,
 			),
-		),
-	);
+		);
+	});
+
+const parseNormalizedRecipe = (value: unknown): NormalizedRecipe | null => {
+	const parsedRecipe = normalizedRecipeSchema.safeParse(value);
+
+	return parsedRecipe.success ? parsedRecipe.data : null;
+};
+
+const parseStepChanges = (value: unknown): RecipeStepChange[] => {
+	const parsedStepChanges = recipeStepChangeSchema.array().safeParse(value ?? []);
+
+	return parsedStepChanges.success ? parsedStepChanges.data : [];
+};
 
 const getRecipeLabel = ({
 	sourceType,
@@ -199,10 +230,16 @@ export const getOwnedPlanEditorData = async (
 
 	const recipeRows = await db
 		.select({
+			adjustedForServings: planRecipeSources.adjustedForServings,
+			adjustedRecipe: planRecipeSources.adjustedRecipe,
+			adjustmentError: planRecipeSources.adjustmentError,
+			adjustmentStatus: planRecipeSources.adjustmentStatus,
+			baseServingsOverride: planRecipeSources.baseServingsOverride,
 			id: recipeSources.id,
 			sourceType: recipeSources.sourceType,
 			sourceUrl: recipeSources.sourceUrl,
 			rawContent: recipeSources.rawContent,
+			stepChanges: planRecipeSources.stepChanges,
 			title: recipeSources.title,
 			summary: recipeSources.summary,
 			processingStatus: recipeSources.processingStatus,
@@ -225,7 +262,16 @@ export const getOwnedPlanEditorData = async (
 		title: recipe.title,
 		summary: recipe.summary,
 		processingStatus: recipe.processingStatus,
-		normalizedRecipe: recipe.normalizedRecipe,
+		normalizedRecipe: parseNormalizedRecipe(recipe.normalizedRecipe),
+		adjustedRecipe: parseNormalizedRecipe(recipe.adjustedRecipe),
+		adjustedForServings: recipe.adjustedForServings,
+		adjustmentStatus: recipe.adjustmentStatus,
+		adjustmentError: recipe.adjustmentError,
+		baseServings:
+			recipe.baseServingsOverride ??
+			parseNormalizedRecipe(recipe.normalizedRecipe)?.servings ??
+			null,
+		stepChanges: parseStepChanges(recipe.stepChanges),
 	}));
 
 	const [activeVersion] = plan.activeVersionId
@@ -291,7 +337,12 @@ export const buildPlanGenerationInput = async ({
 	}
 
 	const incompleteRecipe = plan.recipes.find(
-		(recipe) => recipe.processingStatus !== 'completed' || !recipe.normalizedRecipe,
+		(recipe) =>
+			recipe.processingStatus !== 'completed' ||
+			!recipe.normalizedRecipe ||
+			recipe.adjustmentStatus === 'adjusting' ||
+			recipe.adjustmentStatus === 'action_required' ||
+			recipe.adjustmentStatus === 'needs_base_servings',
 	);
 
 	if (incompleteRecipe) {
@@ -313,14 +364,21 @@ export const buildPlanGenerationInput = async ({
 		constraints: plannerContext.constraints,
 		planningSettings: planningSettingsState.settings,
 		materials: buildPlanMaterials(plan.recipes, options.requestedServings),
-		recipes: plan.recipes.map((recipe) => ({
-			recipeSourceId: recipe.id,
-			sourceType: recipe.type === 'url' ? 'url' : 'manual',
-			sourceUrl: recipe.type === 'url' ? recipe.label : null,
-			title: recipe.title ?? recipe.label,
-			summary: recipe.summary,
-			normalizedRecipe: recipe.normalizedRecipe as NormalizedRecipe,
-		})),
+		recipes: plan.recipes.map((recipe) => {
+			const plannerRecipe =
+				recipe.adjustedRecipe && recipe.adjustedForServings === options.requestedServings
+					? recipe.adjustedRecipe
+					: recipe.normalizedRecipe;
+
+			return {
+				recipeSourceId: recipe.id,
+				sourceType: recipe.type === 'url' ? 'url' : 'manual',
+				sourceUrl: recipe.type === 'url' ? recipe.label : null,
+				title: recipe.title ?? recipe.label,
+				summary: recipe.summary,
+				normalizedRecipe: plannerRecipe as NormalizedRecipe,
+			};
+		}),
 	};
 };
 

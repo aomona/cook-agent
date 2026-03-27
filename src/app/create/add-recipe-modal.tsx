@@ -11,7 +11,9 @@ const recipeInputModeItems: { label: string; value: RecipeInputMode }[] = [
 export const AddRecipeModal = ({
 	mode,
 	open,
+	submitLabel,
 	textValue,
+	title,
 	urlValue,
 	onClose,
 	onModeChange,
@@ -21,7 +23,9 @@ export const AddRecipeModal = ({
 }: {
 	mode: RecipeInputMode;
 	open: boolean;
+	submitLabel?: string;
 	textValue: string;
+	title?: string;
 	urlValue: string;
 	onClose: () => void;
 	onModeChange: (value: RecipeInputMode) => void;
@@ -33,7 +37,7 @@ export const AddRecipeModal = ({
 		<Modal.Overlay backdropFilter="blur(4px)" />
 		<Modal.Content mx="md" w="calc(100% - 2rem)">
 			<Modal.Header px="lg" pt="lg">
-				<Modal.Title>レシピを追加</Modal.Title>
+				<Modal.Title>{title ?? 'レシピを追加'}</Modal.Title>
 			</Modal.Header>
 
 			<Modal.Body px="lg" py="md">
@@ -74,7 +78,7 @@ export const AddRecipeModal = ({
 				<Button variant="ghost" onClick={onClose}>
 					閉じる
 				</Button>
-				<Button onClick={onSubmit}>追加する</Button>
+				<Button onClick={onSubmit}>{submitLabel ?? '追加する'}</Button>
 			</Modal.Footer>
 		</Modal.Content>
 	</Modal.Root>
