@@ -15,7 +15,8 @@ const tavilyApiKey = getRequiredEnv('TAVILY_API_KEY');
 const tavilyBaseUrl = 'https://api.tavily.com';
 
 const plannerReqSchema = z
-	.record(z.string().trim().min(1).max(40), z.number().int().positive().max(8))
+	.object({})
+	.catchall(z.number().int().positive().max(8))
 	.refine((value) => Object.keys(value).length <= 10, {
 		message: 'req can include at most 10 resource keys.',
 	});
