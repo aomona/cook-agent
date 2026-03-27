@@ -8,6 +8,7 @@ import Timeline, {
 	TimelineHeaders,
 	type TimelineItemBase,
 } from 'react-calendar-timeline';
+import { buildPlanTimelineData } from '@/lib/plans/timeline';
 import type { PlanDocument } from '@/lib/plans/types';
 
 type PlanTimelineProps = {
@@ -28,114 +29,27 @@ type PlanTimelineItem = TimelineItemBase<number> & {
 };
 
 const MINUTE_MS = 60 * 1000;
-const DEFAULT_GROUP_ID = 'shared';
-const GROUP_COLORS = ['#2563eb', '#d97706', '#059669', '#dc2626', '#7c3aed', '#0891b2'];
-
-const buildTimelineData = ({
-	plan,
-	recipeTitleById,
-}: PlanTimelineProps): {
-	defaultTimeEnd: number;
-	defaultTimeStart: number;
-	groups: PlanTimelineGroup[];
-	items: PlanTimelineItem[];
-	totalMinutes: number;
-} => {
-	const groups: PlanTimelineGroup[] = [
-		{
-			color: '#475569',
-			id: DEFAULT_GROUP_ID,
-			stackItems: true,
-			title: '共通作業',
-		},
-	];
-	const groupIds = new Set<string>([DEFAULT_GROUP_ID]);
-	let colorIndex = 0;
-
-	for (const step of plan.steps) {
-		if (!step.recipeSourceId || groupIds.has(step.recipeSourceId)) {
-			continue;
-		}
-
-		groups.push({
-			color: GROUP_COLORS[colorIndex % GROUP_COLORS.length] ?? '#2563eb',
-			id: step.recipeSourceId,
-			stackItems: true,
-			title: recipeTitleById[step.recipeSourceId] ?? step.recipeSourceId,
-		});
-		groupIds.add(step.recipeSourceId);
-		colorIndex += 1;
-	}
-
-	const groupColorById = new Map(groups.map((group) => [String(group.id), group.color]));
-	const stepEndMinuteById = new Map<string, number>();
-	const items: PlanTimelineItem[] = [];
-	let sequentialCursor = 0;
-
-	for (const [index, step] of plan.steps.entries()) {
-		const dependencyEndMinute =
-			step.dependencies.reduce((latestMinute, dependencyId) => {
-				const dependencyEnd = stepEndMinuteById.get(dependencyId) ?? 0;
-
-				return Math.max(latestMinute, dependencyEnd);
-			}, 0) ?? 0;
-		const startMinute = step.canParallelize
-			? dependencyEndMinute
-			: Math.max(dependencyEndMinute, sequentialCursor);
-		const endMinute = startMinute + step.estimatedMinutes;
-		const groupId =
-			step.recipeSourceId && groupIds.has(step.recipeSourceId)
-				? step.recipeSourceId
-				: DEFAULT_GROUP_ID;
-		const groupColor = groupColorById.get(groupId) ?? '#475569';
-
-		stepEndMinuteById.set(step.id, endMinute);
-
-		if (!step.canParallelize) {
-			sequentialCursor = endMinute;
-		}
-
-		items.push({
-			canParallelize: step.canParallelize,
-			description: step.description,
-			durationMinutes: step.estimatedMinutes,
-			end_time: dayjs().startOf('hour').add(endMinute, 'minute').valueOf(),
-			group: groupId,
-			groupColor,
-			id: step.id,
-			itemProps: {
-				title: `${step.title} (${step.estimatedMinutes}分)`,
-			},
-			start_time: dayjs().startOf('hour').add(startMinute, 'minute').valueOf(),
-			stepNumber: index + 1,
-			title: step.title,
-		});
-	}
-
-	const totalMinutes = Math.max(
-		...items.map((item) => dayjs(item.end_time).diff(dayjs().startOf('hour'), 'minute')),
-		0,
-	);
-	const defaultTimeStart = dayjs().startOf('hour').add(-5, 'minute').valueOf();
-	const defaultTimeEnd = dayjs()
-		.startOf('hour')
-		.add(Math.max(totalMinutes + 10, 45), 'minute')
-		.valueOf();
-
-	return {
-		defaultTimeEnd,
-		defaultTimeStart,
-		groups,
-		items,
-		totalMinutes,
-	};
-};
 
 export const PlanTimeline = ({ plan, recipeTitleById }: PlanTimelineProps) => {
-	const { defaultTimeEnd, defaultTimeStart, groups, items, totalMinutes } = buildTimelineData({
+	const {
+		groups,
+		items: timelineItems,
+		totalMinutes,
+	} = buildPlanTimelineData({
 		plan,
 		recipeTitleById,
 	});
+	const timelineBase = dayjs().startOf('hour');
+	const items: PlanTimelineItem[] = timelineItems.map((item) => ({
+		...item,
+		end_time: timelineBase.add(item.endMinute, 'minute').valueOf(),
+		itemProps: {
+			title: `${item.title} (${item.durationMinutes}分)`,
+		},
+		start_time: timelineBase.add(item.startMinute, 'minute').valueOf(),
+	}));
+	const defaultTimeStart = timelineBase.add(-5, 'minute').valueOf();
+	const defaultTimeEnd = timelineBase.add(Math.max(totalMinutes + 10, 45), 'minute').valueOf();
 
 	return (
 		<Card.Root variant="outline">
