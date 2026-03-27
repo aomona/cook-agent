@@ -13,7 +13,7 @@ import {
 } from '@/lib/plans/stream-route';
 
 const routeParamsSchema = z.object({
-	planId: z.string().uuid(),
+	planId: z.uuid(),
 });
 
 const improvePlanRequestSchema = planGenerationOptionsSchema.extend({

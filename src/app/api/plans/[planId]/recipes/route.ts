@@ -4,10 +4,15 @@ import { z } from 'zod';
 import { createRecipeSourceForPlan, getRequestActor } from '@/lib/create-session';
 import { processRecipeSource } from '@/lib/recipes/process-recipe-source';
 
+const trimmedUrlSchema = z
+	.string()
+	.trim()
+	.pipe(z.url({ error: '有効なURLを入力してください。' }));
+
 const addRecipeSchema = z.discriminatedUnion('type', [
 	z.object({
 		type: z.literal('url'),
-		value: z.string().trim().url('有効なURLを入力してください。'),
+		value: trimmedUrlSchema,
 	}),
 	z.object({
 		type: z.literal('text'),

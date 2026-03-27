@@ -31,7 +31,7 @@ const plannerOutputSchema = z.object({
 					.positive()
 					.max(24 * 60),
 				canParallelize: z.boolean(),
-				recipeSourceId: z.string().uuid().nullable(),
+				recipeSourceId: z.uuid().nullable(),
 				notesForUser: z.array(z.string().trim().min(1).max(200)).max(10).nullable(),
 				recoveryTips: z.array(z.string().trim().min(1).max(200)).max(10).nullable(),
 				ingredients: z
@@ -69,7 +69,7 @@ const plannerOutputSchema = z.object({
 		.strictObject({
 			availableEquipment: z.array(z.string().trim().min(1).max(80)).max(30),
 			constraints: z.array(z.string().trim().min(1).max(160)).max(30),
-			recipeSourceIds: z.array(z.string().uuid()).max(20),
+			recipeSourceIds: z.array(z.uuid()).max(20),
 		})
 		.nullable(),
 });
@@ -88,14 +88,14 @@ const webSearchToolInputSchema = z.object({
 });
 
 const fetchUrlToolInputSchema = z.object({
-	url: z.string().url(),
+	url: z.url(),
 	reason: z.string().trim().min(1).max(120),
 	query: z.string().trim().min(1).max(240).optional(),
 });
 
 const tavilySearchResultSchema = z.object({
 	title: z.string().catch(''),
-	url: z.string().url(),
+	url: z.url(),
 	content: z.string().catch(''),
 	raw_content: z.string().nullable().optional(),
 	score: z.number().nullable().optional(),
@@ -114,7 +114,7 @@ const tavilySearchResponseSchema = z.object({
 });
 
 const tavilyExtractResultSchema = z.object({
-	url: z.string().url(),
+	url: z.url(),
 	raw_content: z.string(),
 });
 

@@ -38,7 +38,7 @@ export const planStepSchema = z.object({
 		.positive()
 		.max(24 * 60),
 	canParallelize: z.boolean(),
-	recipeSourceId: nullableOptional(z.string().uuid()),
+	recipeSourceId: nullableOptional(z.uuid()),
 	notesForUser: nullableOptional(z.array(z.string().trim().min(1).max(200)).max(10)),
 	recoveryTips: nullableOptional(z.array(z.string().trim().min(1).max(200)).max(10)),
 	ingredients: nullableOptional(z.array(planStepIngredientRefSchema).max(20)),

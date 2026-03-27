@@ -8,7 +8,7 @@ import { isProduction } from '@/lib/env';
 import { deleteOwnedPlan } from '@/lib/plans/queries';
 
 const deletePlanInputSchema = z.object({
-	planId: z.string().uuid(),
+	planId: z.uuid(),
 });
 
 export const deletePlanAction = async ({ planId }: { planId: string }): Promise<void> => {

@@ -7,8 +7,8 @@ import {
 } from '@/lib/create-session';
 
 const routeParamsSchema = z.object({
-	planId: z.string().uuid(),
-	recipeSourceId: z.string().uuid(),
+	planId: z.uuid(),
+	recipeSourceId: z.uuid(),
 });
 
 const getDeleteRecipeErrorResponse = (

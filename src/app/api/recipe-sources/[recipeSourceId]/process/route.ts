@@ -7,7 +7,7 @@ import { recipeSources } from '@/db/schema';
 import { getRequestActor } from '@/lib/create-session';
 import { processRecipeSource } from '@/lib/recipes/process-recipe-source';
 
-const recipeSourceIdSchema = z.string().uuid();
+const recipeSourceIdSchema = z.uuid();
 
 export const runtime = 'nodejs';
 

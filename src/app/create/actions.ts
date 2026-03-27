@@ -14,28 +14,33 @@ import {
 } from '@/lib/create-session';
 import { processRecipeSource } from '@/lib/recipes/process-recipe-source';
 
+const trimmedUrlSchema = z
+	.string()
+	.trim()
+	.pipe(z.url({ error: '有効なURLを入力してください。' }));
+
 const addRecipeInputSchema = z.discriminatedUnion('type', [
 	z.object({
-		planId: z.string().uuid(),
+		planId: z.uuid(),
 		type: z.literal('url'),
-		value: z.string().trim().url('有効なURLを入力してください。'),
+		value: trimmedUrlSchema,
 	}),
 	z.object({
-		planId: z.string().uuid(),
+		planId: z.uuid(),
 		type: z.literal('text'),
 		value: z.string().trim().min(1),
 	}),
 ]);
 
 const updateRecipeServingsInputSchema = z.object({
-	planId: z.string().uuid(),
-	recipeId: z.string().uuid(),
+	planId: z.uuid(),
+	recipeId: z.uuid(),
 	servings: z.number().int().min(1).max(100),
 });
 
 const deleteRecipeInputSchema = z.object({
-	planId: z.string().uuid(),
-	recipeId: z.string().uuid(),
+	planId: z.uuid(),
+	recipeId: z.uuid(),
 });
 
 const normalizeUrl = (value: string): string => {

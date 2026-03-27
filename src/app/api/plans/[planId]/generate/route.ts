@@ -7,7 +7,7 @@ import { planGenerationOptionsSchema } from '@/lib/plans/schema';
 import { plannerRouteRuntime } from '@/lib/plans/stream-route';
 
 const routeParamsSchema = z.object({
-	planId: z.string().uuid(),
+	planId: z.uuid(),
 });
 
 const getErrorResponse = (error: unknown): { message: string; status: number } => {

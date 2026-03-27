@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const uuidSchema = z.string().uuid();
+const uuidSchema = z.uuid();
 
 export const parseUuid = (value: string): string | null => {
 	const parsed = uuidSchema.safeParse(value);
