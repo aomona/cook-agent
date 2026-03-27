@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import './globals.css';
 import { Box, ColorModeScript, defineConfig, UIProvider } from '@workspaces/ui';
+import { AppHeader } from '@/components/app-header';
+import { auth } from '@/lib/auth';
 
 const uiConfig = defineConfig({
 	defaultColorMode: 'system',
@@ -29,12 +31,14 @@ export default async function RootLayout({
 	children: React.ReactNode;
 }>) {
 	const cookieStore = await cookies();
+	const session = await auth.api.getSession({ headers: await headers() });
 
 	return (
 		<html lang="ja" suppressHydrationWarning>
 			<body suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable}`}>
 				<ColorModeScript defaultValue={uiConfig.defaultColorMode} type="cookie" />
 				<UIProvider config={uiConfig} cookie={cookieStore.toString()} storage="cookie">
+					{session && <AppHeader />}
 					<Box as="main" h="full">
 						{children}
 					</Box>
