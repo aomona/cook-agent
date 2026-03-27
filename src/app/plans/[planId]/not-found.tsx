@@ -14,9 +14,11 @@ export default function PlanNotFound() {
 							削除されたか、アクセス権のない計画を開こうとした可能性があります。
 						</Text>
 					</VStack>
-					<Button as={NextLink} href="/" alignSelf="start">
-						一覧に戻る
-					</Button>
+					<NextLink href="/">
+						<Button as="span" alignSelf="start">
+							一覧に戻る
+						</Button>
+					</NextLink>
 				</Card.Body>
 			</Card.Root>
 		</Flex>

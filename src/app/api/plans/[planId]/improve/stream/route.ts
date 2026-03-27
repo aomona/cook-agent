@@ -7,8 +7,6 @@ import { planDocumentSchema, planGenerationOptionsSchema } from '@/lib/plans/sch
 import {
 	createSseResponse,
 	getPlannerRouteErrorResponse,
-	plannerRouteMaxDuration,
-	plannerRouteRuntime,
 	writeSseEvent,
 } from '@/lib/plans/stream-route';
 
@@ -21,8 +19,8 @@ const improvePlanRequestSchema = planGenerationOptionsSchema.extend({
 	improvementRequest: z.string().trim().min(1).max(2000),
 });
 
-export const runtime = plannerRouteRuntime;
-export const maxDuration = plannerRouteMaxDuration;
+export const runtime = 'nodejs';
+export const maxDuration = 180;
 
 export async function POST(request: Request, context: { params: Promise<{ planId: string }> }) {
 	const cookieStore = await cookies();

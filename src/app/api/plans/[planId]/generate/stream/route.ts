@@ -7,8 +7,6 @@ import { planGenerationOptionsSchema } from '@/lib/plans/schema';
 import {
 	createSseResponse,
 	getPlannerRouteErrorResponse,
-	plannerRouteMaxDuration,
-	plannerRouteRuntime,
 	writeSseEvent,
 } from '@/lib/plans/stream-route';
 
@@ -16,8 +14,8 @@ const routeParamsSchema = z.object({
 	planId: z.uuid(),
 });
 
-export const runtime = plannerRouteRuntime;
-export const maxDuration = plannerRouteMaxDuration;
+export const runtime = 'nodejs';
+export const maxDuration = 180;
 
 export async function POST(request: Request, context: { params: Promise<{ planId: string }> }) {
 	const cookieStore = await cookies();

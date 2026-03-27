@@ -4,7 +4,6 @@ import { generateCookingPlan } from '@/lib/ai/planner';
 import { getRequestActor } from '@/lib/create-session';
 import { buildPlanGenerationInput, saveGeneratedPlanVersion } from '@/lib/plans/queries';
 import { planGenerationOptionsSchema } from '@/lib/plans/schema';
-import { plannerRouteRuntime } from '@/lib/plans/stream-route';
 
 const routeParamsSchema = z.object({
 	planId: z.uuid(),
@@ -34,7 +33,7 @@ const getErrorResponse = (error: unknown): { message: string; status: number } =
 	return { message: 'Failed to generate plan.', status: 500 };
 };
 
-export const runtime = plannerRouteRuntime;
+export const runtime = 'nodejs';
 
 export async function POST(request: Request, context: { params: Promise<{ planId: string }> }) {
 	const cookieStore = await cookies();
