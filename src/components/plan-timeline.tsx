@@ -170,7 +170,6 @@ export const PlanTimeline = ({ editable = false, plan, recipeTitleById }: PlanTi
 
 										return (
 											<div key={item.id} className="plan-timeline-row">
-												<div className="plan-timeline-row-index">{item.stepNumber}</div>
 												<div className="plan-timeline-row-track">
 													{marks.map((mark) => (
 														<div
