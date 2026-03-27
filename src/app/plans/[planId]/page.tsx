@@ -5,12 +5,12 @@ import { notFound, redirect } from 'next/navigation';
 import { PlanMaterialsSection } from '@/components/plan-materials-section';
 import { PlanStepCards } from '@/components/plan-step-cards';
 import { PlanTimelineLazy } from '@/components/plan-timeline-lazy';
+import { RecipeSourceDetailCard } from '@/components/recipe-source-detail-card';
 import { getRequestActor } from '@/lib/create-session';
 import {
 	formatPlanDateTime,
 	getPlanStatusColorScheme,
 	getPlanStatusLabel,
-	getRecipeProcessingLabel,
 } from '@/lib/plans/presentation';
 import { getOwnedPlanEditorData } from '@/lib/plans/queries';
 import { DeletePlanButton } from './delete-plan-button';
@@ -92,23 +92,7 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 				) : (
 					<VStack align="stretch" gap="md">
 						{plan.recipes.map((recipe) => (
-							<Card.Root key={recipe.id} variant="outline">
-								<Card.Body gap="sm">
-									<Flex align="start" justify="space-between" gap="sm">
-										<Badge colorScheme={recipe.type === 'url' ? 'blue' : 'amber'} variant="subtle">
-											{recipe.type === 'url' ? 'URL' : 'TEXT'}
-										</Badge>
-										<Text color="fg.subtle">
-											{getRecipeProcessingLabel(recipe.processingStatus)}
-										</Text>
-									</Flex>
-									<Heading size="md">{recipe.title ?? recipe.label}</Heading>
-									{recipe.summary ? <Text whiteSpace="pre-wrap">{recipe.summary}</Text> : null}
-									<Text color="fg.subtle" lineClamp={2} whiteSpace="pre-wrap">
-										{recipe.label}
-									</Text>
-								</Card.Body>
-							</Card.Root>
+							<RecipeSourceDetailCard key={recipe.id} recipe={recipe} />
 						))}
 					</VStack>
 				)}

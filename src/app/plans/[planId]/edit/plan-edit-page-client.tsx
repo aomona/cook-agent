@@ -7,7 +7,6 @@ import {
 	Flex,
 	Heading,
 	Input,
-	Status,
 	Text,
 	Textarea,
 	useNotice,
@@ -18,6 +17,7 @@ import { useRef, useState } from 'react';
 import { PlanMaterialsSection } from '@/components/plan-materials-section';
 import { PlanStepCards } from '@/components/plan-step-cards';
 import { PlanTimelineLazy } from '@/components/plan-timeline-lazy';
+import { RecipeSourceDetailCard } from '@/components/recipe-source-detail-card';
 import type { PlanEditorData } from '@/lib/plans/queries';
 import type { PlanDocument } from '@/lib/plans/types';
 import { PlannerProgressModal } from './planner-progress-modal';
@@ -354,20 +354,7 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 				<VStack align="stretch" gap="md">
 					<Heading size="md">入力レシピ</Heading>
 					{initialPlan.recipes.map((recipe) => (
-						<Card.Root key={recipe.id} variant="outline">
-							<Card.Body gap="sm">
-								<Flex align="center" justify="space-between" gap="sm" wrap="wrap">
-									<Badge colorScheme={recipe.type === 'url' ? 'blue' : 'amber'} variant="subtle">
-										{recipe.type === 'url' ? 'URL' : 'TEXT'}
-									</Badge>
-									<Status value={recipe.processingStatus === 'completed' ? 'success' : 'warning'}>
-										{recipe.processingStatus === 'completed' ? '抽出完了' : '未完了'}
-									</Status>
-								</Flex>
-								<Heading size="sm">{recipe.title ?? recipe.label}</Heading>
-								{recipe.summary ? <Text>{recipe.summary}</Text> : null}
-							</Card.Body>
-						</Card.Root>
+						<RecipeSourceDetailCard key={recipe.id} recipe={recipe} />
 					))}
 				</VStack>
 
