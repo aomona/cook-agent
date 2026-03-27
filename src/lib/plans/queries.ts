@@ -1,8 +1,10 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { planRecipeSources, plans, planVersions, recipeSources } from '@/db/schema';
-import { planDocumentSchema } from '@/lib/plans/schema';
+import { mergePlannerContext } from '@/lib/planning-settings';
+import { getUserPlanningSettingsState } from '@/lib/planning-settings-queries';
 import { scalePlanMaterial } from '@/lib/plans/presentation';
+import { planDocumentSchema } from '@/lib/plans/schema';
 import type {
 	NormalizedRecipe,
 	PlanDocument,
@@ -296,12 +298,20 @@ export const buildPlanGenerationInput = async ({
 		throw new Error('All recipes must be processed before generating a plan.');
 	}
 
+	const planningSettingsState = await getUserPlanningSettingsState(userId);
+	const plannerContext = mergePlannerContext({
+		availableEquipment: options.availableEquipment,
+		constraints: options.constraints,
+		settings: planningSettingsState.settings,
+	});
+
 	return {
 		planId: plan.id,
 		title: plan.title,
 		requestedServings: options.requestedServings,
-		availableEquipment: options.availableEquipment,
-		constraints: options.constraints,
+		availableEquipment: plannerContext.availableEquipment,
+		constraints: plannerContext.constraints,
+		planningSettings: planningSettingsState.settings,
 		materials: buildPlanMaterials(plan.recipes, options.requestedServings),
 		recipes: plan.recipes.map((recipe) => ({
 			recipeSourceId: recipe.id,

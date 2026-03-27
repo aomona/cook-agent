@@ -13,6 +13,7 @@ import {
 	uniqueIndex,
 	uuid,
 } from 'drizzle-orm/pg-core';
+import type { ConstraintSettings, EquipmentSettings } from '@/lib/planning-settings';
 import type {
 	NormalizedRecipe,
 	PlanDocument,
@@ -175,6 +176,19 @@ export const plans: PgTableWithColumns<any> = pgTable(
 	],
 );
 
+export const userPlanningSettings = pgTable(
+	'user_planning_settings',
+	{
+		userId: text('user_id')
+			.primaryKey()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		equipment: jsonb('equipment').$type<EquipmentSettings>().notNull(),
+		constraints: jsonb('constraints').$type<ConstraintSettings>().notNull(),
+		...timestamps,
+	},
+	(table) => [index('user_planning_settings_updated_at_idx').on(table.updatedAt)],
+);
+
 export const cookingSessions = pgTable(
 	'cooking_sessions',
 	{
@@ -309,6 +323,13 @@ export const planVersionsRelations = relations(planVersions, ({ one, many }) => 
 		references: [user.id],
 	}),
 	cookingSessions: many(cookingSessions),
+}));
+
+export const userPlanningSettingsRelations = relations(userPlanningSettings, ({ one }) => ({
+	user: one(user, {
+		fields: [userPlanningSettings.userId],
+		references: [user.id],
+	}),
 }));
 
 export const cookingSessionsRelations = relations(cookingSessions, ({ one, many }) => ({

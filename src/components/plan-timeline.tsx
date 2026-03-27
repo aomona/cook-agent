@@ -75,6 +75,18 @@ const getConflictKey = (conflict: Pick<PlanConflict, 'end' | 'res' | 'start'>): 
 const clampZoomPercent = (zoomPercent: number): number =>
 	Math.min(MAX_ZOOM_PERCENT, Math.max(MIN_ZOOM_PERCENT, zoomPercent));
 
+const getEquipmentCount = (value: string): number => {
+	const match = value.match(/[x×]\s*(\d+)/i);
+
+	if (!match) {
+		return 1;
+	}
+
+	const parsedCount = Number.parseInt(match[1], 10);
+
+	return Number.isNaN(parsedCount) ? 1 : parsedCount;
+};
+
 const deriveCapacity = (plan: PlanDocument): PlanResourceCapacity => {
 	const capacity: PlanResourceCapacity = {
 		hands: 1,
@@ -82,20 +94,32 @@ const deriveCapacity = (plan: PlanDocument): PlanResourceCapacity => {
 		stove: 0,
 	};
 
+	const structuredEquipment = plan.metadata?.planningSettings?.equipment;
+
+	if (structuredEquipment) {
+		capacity.oven = structuredEquipment.oven;
+		capacity.stove = structuredEquipment.stove;
+	}
+
 	for (const equipment of plan.metadata?.availableEquipment ?? []) {
 		const normalizedEquipment = equipment.toLowerCase();
+		const count = getEquipmentCount(equipment);
 
-		if (normalizedEquipment.includes('oven') || normalizedEquipment.includes('オーブン')) {
-			capacity.oven += 1;
+		if (
+			!structuredEquipment &&
+			(normalizedEquipment.includes('oven') || normalizedEquipment.includes('オーブン'))
+		) {
+			capacity.oven += count;
 		}
 
 		if (
-			normalizedEquipment.includes('stove') ||
-			normalizedEquipment.includes('burner') ||
-			normalizedEquipment.includes('コンロ') ||
-			normalizedEquipment.includes('バーナー')
+			!structuredEquipment &&
+			(normalizedEquipment.includes('stove') ||
+				normalizedEquipment.includes('burner') ||
+				normalizedEquipment.includes('コンロ') ||
+				normalizedEquipment.includes('バーナー'))
 		) {
-			capacity.stove += 1;
+			capacity.stove += count;
 		}
 	}
 

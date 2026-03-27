@@ -4,7 +4,10 @@ import { cookies, headers } from 'next/headers';
 import './globals.css';
 import { Box, ColorModeScript, defineConfig, UIProvider } from '@workspaces/ui';
 import { AppHeader } from '@/components/app-header';
+import { PlanningSettingsProvider } from '@/components/planning-settings-provider';
 import { auth } from '@/lib/auth';
+import { createDefaultPlanningSettings } from '@/lib/planning-settings';
+import { getUserPlanningSettingsState } from '@/lib/planning-settings-queries';
 
 const uiConfig = defineConfig({
 	defaultColorMode: 'system',
@@ -32,16 +35,24 @@ export default async function RootLayout({
 }>) {
 	const cookieStore = await cookies();
 	const session = await auth.api.getSession({ headers: await headers() });
+	const initialPlanningSettingsState = session
+		? await getUserPlanningSettingsState(session.user.id)
+		: {
+				hasSavedSettings: false,
+				settings: createDefaultPlanningSettings(),
+			};
 
 	return (
 		<html lang="ja" suppressHydrationWarning>
 			<body suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable}`}>
 				<ColorModeScript defaultValue={uiConfig.defaultColorMode} type="cookie" />
 				<UIProvider config={uiConfig} cookie={cookieStore.toString()} storage="cookie">
-					{session && <AppHeader />}
-					<Box as="main" h="full">
-						{children}
-					</Box>
+					<PlanningSettingsProvider initialState={initialPlanningSettingsState}>
+						{session && <AppHeader />}
+						<Box as="main" h="full">
+							{children}
+						</Box>
+					</PlanningSettingsProvider>
 				</UIProvider>
 			</body>
 		</html>

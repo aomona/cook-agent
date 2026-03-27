@@ -58,7 +58,7 @@ body {
 }
 
 .plan-reasoning-streaming::after {
-	content: '▋';
+	content: "▋";
 	display: inline-block;
 	margin-left: 0.1em;
 	animation: plan-reasoning-cursor-blink 0.9s step-end infinite;

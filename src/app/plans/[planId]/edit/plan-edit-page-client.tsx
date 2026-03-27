@@ -17,6 +17,8 @@ import { useRef, useState } from 'react';
 import { PlanMaterialsSection } from '@/components/plan-materials-section';
 import { PlanStepCards } from '@/components/plan-step-cards';
 import { PlanTimelineLazy } from '@/components/plan-timeline-lazy';
+import { usePlanningSettings } from '@/components/planning-settings-provider';
+import { PlanningSettingsSummary } from '@/components/planning-settings-summary';
 import { RecipeSourceDetailCard } from '@/components/recipe-source-detail-card';
 import type { PlanEditorData } from '@/lib/plans/queries';
 import type { PlanDocument } from '@/lib/plans/types';
@@ -30,17 +32,6 @@ const getErrorMessage = (error: unknown): string => {
 
 	return '工程の更新に失敗しました。';
 };
-
-const parseLines = (value: string): string[] =>
-	Array.from(
-		new Set(
-			value
-				.split('\n')
-				.map((item) => item.trim())
-				.filter(Boolean),
-		),
-	);
-
 const getDefaultServings = (plan: PlanEditorData): number => {
 	if (plan.requestedServings) {
 		return plan.requestedServings;
@@ -69,18 +60,9 @@ const scrollIntoViewOnNextFrame = (element: HTMLDivElement | null): void => {
 export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorData }) => {
 	const router = useRouter();
 	const notice = useNotice();
+	const { openDrawer, settings } = usePlanningSettings();
 	const [requestedServings, setRequestedServings] = useState(
 		String(getDefaultServings(initialPlan)),
-	);
-	const [availableEquipment, setAvailableEquipment] = useState(
-		Array.isArray(initialPlan.activeVersion?.plan.metadata?.availableEquipment)
-			? initialPlan.activeVersion.plan.metadata.availableEquipment.join('\n')
-			: '',
-	);
-	const [constraints, setConstraints] = useState(
-		Array.isArray(initialPlan.activeVersion?.plan.metadata?.constraints)
-			? initialPlan.activeVersion.plan.metadata.constraints.join('\n')
-			: '',
 	);
 	const [generatedPlan, setGeneratedPlan] = useState<PlanDocument | null>(
 		initialPlan.activeVersion?.plan ?? null,
@@ -225,8 +207,6 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 		await runPlannerStream({
 			body: {
 				requestedServings: parsedServings,
-				availableEquipment: parseLines(availableEquipment),
-				constraints: parseLines(constraints),
 			},
 			completeLog: '工程の生成が完了しました。',
 			completeTitle: '工程の生成が完了しました',
@@ -272,8 +252,6 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 		await runPlannerStream({
 			body: {
 				requestedServings: parsedServings,
-				availableEquipment: parseLines(availableEquipment),
-				constraints: parseLines(constraints),
 				currentPlan: generatedPlan,
 				improvementRequest: improvementRequest.trim(),
 			},
@@ -307,12 +285,12 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 						<VStack align="stretch" gap="xs">
 							<Heading size="lg">工程生成の条件</Heading>
 							<Text color="fg.subtle">
-								構造化済みレシピをもとに、人数・器具・制約を加味した工程を AI が構成します。
+								構造化済みレシピをもとに、人数と保存済みの工程設定を加味した工程を AI が構成します。
 							</Text>
 						</VStack>
 
-						<Flex direction={{ base: 'column', md: 'row' }} gap="md">
-							<VStack align="stretch" flex="1" gap="sm">
+						<Flex direction={{ base: 'column', xl: 'row' }} gap="md">
+							<VStack align="stretch" flex={{ base: '1', xl: '0 0 180px' }} gap="sm">
 								<Text fontWeight="medium">人数</Text>
 								<Input
 									min={1}
@@ -321,26 +299,16 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 									onChange={(event) => setRequestedServings(event.target.value)}
 								/>
 							</VStack>
-							<VStack align="stretch" flex="1" gap="sm">
-								<Text fontWeight="medium">利用可能な器具</Text>
-								<Textarea
-									autosize
-									minH="8rem"
-									placeholder={'フライパン\n鍋\nオーブン'}
-									value={availableEquipment}
-									onChange={(event) => setAvailableEquipment(event.target.value)}
-								/>
-							</VStack>
-							<VStack align="stretch" flex="1" gap="sm">
-								<Text fontWeight="medium">制約条件</Text>
-								<Textarea
-									autosize
-									minH="8rem"
-									placeholder={'20分以内\n辛さ控えめ\n洗い物を少なく'}
-									value={constraints}
-									onChange={(event) => setConstraints(event.target.value)}
-								/>
-							</VStack>
+							<PlanningSettingsSummary
+								action={
+									<Button variant="outline" onClick={openDrawer}>
+										設定を開く
+									</Button>
+								}
+								description="器具・制約は drawer から編集します。保存した内容が generate と improve の両方に反映されます。"
+								settings={settings}
+								title="適用中の工程設定"
+							/>
 						</Flex>
 
 						<Flex justify="end">

@@ -26,6 +26,16 @@ export const PlannerProgressModal = ({
 	onClose: () => void;
 }) => {
 	const recentLogs = progressLogs.slice(-STATUS_DISPLAY_COUNT);
+	const seenLogs = new Map<string, number>();
+	const recentLogEntries = recentLogs.map((log) => {
+		const occurrence = (seenLogs.get(log) ?? 0) + 1;
+		seenLogs.set(log, occurrence);
+
+		return {
+			key: `${log}-${occurrence}`,
+			log,
+		};
+	});
 
 	return (
 		<Modal.Root
@@ -62,13 +72,7 @@ export const PlannerProgressModal = ({
 							<Text color="fg.subtle" fontSize="xs" fontWeight="semibold" letterSpacing="wider">
 								推論
 							</Text>
-							<Box
-								bg="bg.subtle"
-								borderRadius="md"
-								maxH="38vh"
-								overflowY="auto"
-								p="md"
-							>
+							<Box bg="bg.subtle" borderRadius="md" maxH="38vh" overflowY="auto" p="md">
 								<Text
 									className={isGenerating ? 'plan-reasoning-streaming' : undefined}
 									color={reasoningText ? undefined : 'fg.muted'}
@@ -87,15 +91,13 @@ export const PlannerProgressModal = ({
 								ステータス
 							</Text>
 							<VStack align="stretch" gap="xs">
-								{recentLogs.map((log, index) => {
+								{recentLogEntries.map(({ key, log }, index) => {
 									const isLatest = index === recentLogs.length - 1;
 									return (
-										<Flex key={`${log}-${index}`} align="center" gap="sm">
+										<Flex key={key} align="center" gap="sm">
 											<Box
 												borderRadius="full"
-												className={
-													isLatest && isGenerating ? 'plan-status-dot-active' : undefined
-												}
+												className={isLatest && isGenerating ? 'plan-status-dot-active' : undefined}
 												bg={isLatest ? 'blue.400' : 'fg.subtle'}
 												flexShrink={0}
 												h="0.375rem"

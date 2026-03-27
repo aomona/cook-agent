@@ -1,3 +1,5 @@
+import type { PlanningSettings } from '@/lib/planning-settings';
+
 export type RecipeSourceMaterialAmountSummary = {
 	text?: string | null;
 	value?: number | null;
@@ -94,6 +96,7 @@ export type PlanGenerationInput = {
 	requestedServings: number;
 	availableEquipment: string[];
 	constraints: string[];
+	planningSettings: PlanningSettings;
 	materials: PlanMaterial[];
 	recipes: PlanGenerationRecipeInput[];
 };
@@ -123,6 +126,7 @@ export type PlanStepResourceRequirements = Record<string, number>;
 export type PlanMetadata = {
 	availableEquipment: string[];
 	constraints: string[];
+	planningSettings?: PlanningSettings;
 	recipeSourceIds: string[];
 };
 

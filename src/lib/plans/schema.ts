@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { planningSettingsSchema } from '@/lib/planning-settings';
 import type {
 	PlanDocument,
 	PlanGenerationOptions,
@@ -63,6 +64,7 @@ export const planMaterialSchema = z.object({
 export const planMetadataSchema = z.object({
 	availableEquipment: z.array(z.string().trim().min(1).max(80)).max(30),
 	constraints: z.array(z.string().trim().min(1).max(160)).max(30),
+	planningSettings: nullableOptional(planningSettingsSchema),
 	recipeSourceIds: z.array(z.uuid()).max(20),
 }) satisfies z.ZodType<PlanMetadata>;
 
@@ -124,6 +126,6 @@ export const planDocumentSchema = z.object({
 
 export const planGenerationOptionsSchema = z.object({
 	requestedServings: z.number().int().min(1).max(24),
-	availableEquipment: z.array(z.string().trim().min(1).max(80)).max(30),
-	constraints: z.array(z.string().trim().min(1).max(160)).max(30),
+	availableEquipment: z.array(z.string().trim().min(1).max(80)).max(30).default([]),
+	constraints: z.array(z.string().trim().min(1).max(160)).max(30).default([]),
 }) satisfies z.ZodType<PlanGenerationOptions>;

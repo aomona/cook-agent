@@ -5,6 +5,7 @@ import { notFound, redirect } from 'next/navigation';
 import { PlanMaterialsSection } from '@/components/plan-materials-section';
 import { PlanStepCards } from '@/components/plan-step-cards';
 import { PlanTimelineLazy } from '@/components/plan-timeline-lazy';
+import { PlanningSettingsSummary } from '@/components/planning-settings-summary';
 import { RecipeSourceDetailCard } from '@/components/recipe-source-detail-card';
 import { getRequestActor } from '@/lib/create-session';
 import {
@@ -81,6 +82,16 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 						</Flex>
 					</Card.Body>
 				</Card.Root>
+
+				{plan.activeVersion ? (
+					<PlanningSettingsSummary
+						availableEquipment={plan.activeVersion.plan.metadata?.availableEquipment}
+						constraints={plan.activeVersion.plan.metadata?.constraints}
+						description="この工程を生成した時点での設定スナップショットです。"
+						settings={plan.activeVersion.plan.metadata?.planningSettings}
+						title="この工程の前提条件"
+					/>
+				) : null}
 
 				{plan.recipes.length === 0 ? (
 					<Card.Root variant="outline">
