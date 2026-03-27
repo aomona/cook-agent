@@ -153,7 +153,7 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 									人分 / {editorPlan.activeVersion.plan.steps.length} ステップ
 								</Text>
 							</VStack>
-							<NextLink href="/plan">
+							<NextLink href={`/plans/${plan.id}/edit`}>
 								<Button as="span" variant="outline">
 									工程を再生成
 								</Button>

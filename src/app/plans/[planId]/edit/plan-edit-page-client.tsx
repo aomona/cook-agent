@@ -138,7 +138,7 @@ const readEventStream = async ({
 	}
 };
 
-export const PlanPageClient = ({ initialPlan }: { initialPlan: PlanEditorData }) => {
+export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorData }) => {
 	const router = useRouter();
 	const notice = useNotice();
 	const [requestedServings, setRequestedServings] = useState(

@@ -1,12 +1,12 @@
 import { Button, Flex, Heading, Text, VStack } from '@workspaces/ui';
 import { cookies } from 'next/headers';
 import NextLink from 'next/link';
-import { redirect } from 'next/navigation';
-import { getActiveCreatePlanId, getRequestActor } from '@/lib/create-session';
+import { notFound, redirect } from 'next/navigation';
+import { getRequestActor } from '@/lib/create-session';
 import { getOwnedPlanEditorData } from '@/lib/plans/queries';
-import { PlanPageClient } from './plan-page-client';
+import { PlanEditPageClient } from './plan-edit-page-client';
 
-export default async function PlanPage() {
+export default async function PlanEditPage({ params }: { params: Promise<{ planId: string }> }) {
 	const cookieStore = await cookies();
 	const actor = await getRequestActor(cookieStore);
 
@@ -14,16 +14,11 @@ export default async function PlanPage() {
 		redirect('/');
 	}
 
-	const planId = getActiveCreatePlanId(cookieStore);
-
-	if (!planId) {
-		redirect('/create');
-	}
-
+	const { planId } = await params;
 	const plan = await getOwnedPlanEditorData(planId, actor.userId);
 
 	if (!plan) {
-		redirect('/create');
+		notFound();
 	}
 
 	return (
@@ -34,14 +29,14 @@ export default async function PlanPage() {
 						<Heading size="xl">{plan.title}</Heading>
 						<Text color="fg.subtle">構造化済みレシピから実行可能な工程を生成します。</Text>
 					</VStack>
-					<NextLink href="/create">
+					<NextLink href={`/plans/${plan.id}`}>
 						<Button as="span" variant="outline">
-							create に戻る
+							計画詳細に戻る
 						</Button>
 					</NextLink>
 				</Flex>
 
-				<PlanPageClient initialPlan={plan} />
+				<PlanEditPageClient initialPlan={plan} />
 			</VStack>
 		</Flex>
 	);

@@ -478,7 +478,7 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 
 					<VStack align={{ base: 'stretch', md: 'end' }} gap="xs">
 						{plan.canProceed ? (
-							<Button as={NextLink} href="/plan" variant="solid">
+							<Button as={NextLink} href={`/plans/${plan.id}/edit`} variant="solid">
 								planに進む
 							</Button>
 						) : (
