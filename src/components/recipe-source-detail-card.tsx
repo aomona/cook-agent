@@ -13,7 +13,12 @@ import {
 	VStack,
 } from '@workspaces/ui';
 import { formatIngredientLine, getRecipeProcessingLabel } from '@/lib/plans/presentation';
-import type { NormalizedRecipe, RecipeProcessingStatus } from '@/lib/plans/types';
+import type {
+	NormalizedRecipe,
+	RecipeAdjustmentStatus,
+	RecipeProcessingStatus,
+	RecipeStepChange,
+} from '@/lib/plans/types';
 
 export type RecipeDetailItem = {
 	id: string;
@@ -23,10 +28,62 @@ export type RecipeDetailItem = {
 	summary: string | null;
 	processingStatus: RecipeProcessingStatus;
 	normalizedRecipe: NormalizedRecipe | null;
+	adjustedRecipe?: NormalizedRecipe | null;
+	adjustedForServings?: number | null;
+	baseServings?: number | null;
+	adjustmentStatus?: RecipeAdjustmentStatus;
+	adjustmentError?: string | null;
+	stepChanges?: RecipeStepChange[];
 };
 
 const getRecipeTitle = (recipe: RecipeDetailItem): string =>
-	recipe.title ?? recipe.normalizedRecipe?.title ?? recipe.label;
+	recipe.title ?? recipe.adjustedRecipe?.title ?? recipe.normalizedRecipe?.title ?? recipe.label;
+
+const RecipeNormalizedSection = ({
+	heading,
+	recipe,
+}: {
+	heading: string;
+	recipe: NormalizedRecipe;
+}) => (
+	<>
+		<Card.Root variant="outline">
+			<Card.Body gap="xs">
+				<Heading size="sm">{heading}</Heading>
+				<Text color="fg.subtle">人数: {recipe.servings ? `${recipe.servings}人分` : '未設定'}</Text>
+			</Card.Body>
+		</Card.Root>
+
+		{recipe.ingredients.length > 0 ? (
+			<Card.Root variant="outline">
+				<Card.Body gap="xs">
+					<Heading size="sm">材料</Heading>
+					{recipe.ingredients.map((ingredient) => (
+						<Text key={ingredient.id} whiteSpace="pre-wrap">
+							・{formatIngredientLine(ingredient)}
+						</Text>
+					))}
+				</Card.Body>
+			</Card.Root>
+		) : null}
+
+		{recipe.steps.length > 0 ? (
+			<Card.Root variant="outline">
+				<Card.Body gap="sm">
+					<Heading size="sm">手順</Heading>
+					{recipe.steps.map((step) => (
+						<VStack key={step.id} align="stretch" gap="xs">
+							<Text color="fg.subtle" fontSize="sm">
+								STEP {step.order}
+							</Text>
+							<Text whiteSpace="pre-wrap">{step.text}</Text>
+						</VStack>
+					))}
+				</Card.Body>
+			</Card.Root>
+		) : null}
+	</>
+);
 
 export const RecipeSourceDetailModal = ({
 	open,
@@ -52,6 +109,11 @@ export const RecipeSourceDetailModal = ({
 							<Badge colorScheme="blackAlpha" variant="subtle">
 								{getRecipeProcessingLabel(recipe.processingStatus)}
 							</Badge>
+							{recipe.adjustedForServings ? (
+								<Badge colorScheme="green" variant="subtle">
+									{recipe.adjustedForServings}人分に調整済み
+								</Badge>
+							) : null}
 						</Flex>
 						<Modal.Title>{recipeTitle}</Modal.Title>
 					</VStack>
@@ -89,47 +151,41 @@ export const RecipeSourceDetailModal = ({
 							</Card.Body>
 						</Card.Root>
 
-						{recipe.normalizedRecipe ? (
+						{recipe.adjustedRecipe || recipe.normalizedRecipe ? (
 							<>
-								<Card.Root variant="outline">
-									<Card.Body gap="xs">
-										<Heading size="sm">基本情報</Heading>
-										<Text color="fg.subtle">
-											人数:{' '}
-											{recipe.normalizedRecipe.servings
-												? `${recipe.normalizedRecipe.servings}人分`
-												: '未設定'}
-										</Text>
-									</Card.Body>
-								</Card.Root>
+								{recipe.adjustedRecipe ? (
+									<RecipeNormalizedSection
+										heading="人数反映後のレシピ"
+										recipe={recipe.adjustedRecipe}
+									/>
+								) : null}
 
-								{recipe.normalizedRecipe.ingredients.length > 0 ? (
+								{recipe.stepChanges && recipe.stepChanges.length > 0 ? (
 									<Card.Root variant="outline">
 										<Card.Body gap="xs">
-											<Heading size="sm">材料</Heading>
-											{recipe.normalizedRecipe.ingredients.map((ingredient) => (
-												<Text key={ingredient.id} whiteSpace="pre-wrap">
-													・{formatIngredientLine(ingredient)}
+											<Heading size="sm">AI が調整したポイント</Heading>
+											{recipe.stepChanges.map((change) => (
+												<Text
+													key={`${change.stepId}-${change.changeType}`}
+													color="fg.subtle"
+													fontSize="sm"
+												>
+													STEP {change.stepId}: {change.changeType} - {change.reason}
 												</Text>
 											))}
 										</Card.Body>
 									</Card.Root>
 								) : null}
 
-								{recipe.normalizedRecipe.steps.length > 0 ? (
-									<Card.Root variant="outline">
-										<Card.Body gap="sm">
-											<Heading size="sm">手順</Heading>
-											{recipe.normalizedRecipe.steps.map((step) => (
-												<VStack key={step.id} align="stretch" gap="xs">
-													<Text color="fg.subtle" fontSize="sm">
-														STEP {step.order}
-													</Text>
-													<Text whiteSpace="pre-wrap">{step.text}</Text>
-												</VStack>
-											))}
-										</Card.Body>
-									</Card.Root>
+								{recipe.adjustmentError ? (
+									<Text color="danger">{recipe.adjustmentError}</Text>
+								) : null}
+
+								{recipe.normalizedRecipe ? (
+									<RecipeNormalizedSection
+										heading={recipe.adjustedRecipe ? '元レシピ' : '抽出レシピ'}
+										recipe={recipe.normalizedRecipe}
+									/>
 								) : null}
 							</>
 						) : (
