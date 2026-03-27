@@ -14,7 +14,7 @@ type PlanTimelineProps = {
 const getKindColor = (kind: PlanStep['kind']): string => {
 	switch (kind) {
 		case 'cleanup':
-			return '#d97706';
+			return '#475569';
 		case 'cook':
 			return '#2563eb';
 		case 'finish':
@@ -194,7 +194,8 @@ export const PlanTimeline = ({ editable = false, plan, recipeTitleById }: PlanTi
 												<div
 													className="plan-timeline-step-bar"
 													style={{
-														background: getKindColor(item.kind as PlanStep['kind']),
+														background:
+															item.groupColor || getKindColor(item.kind as PlanStep['kind']),
 														left: `${left}%`,
 														width: `${Math.max(width, 2.8)}%`,
 													}}
@@ -211,7 +212,10 @@ export const PlanTimeline = ({ editable = false, plan, recipeTitleById }: PlanTi
 														{item.title}
 													</Text>
 													<Flex align="center" gap="xs" wrap="wrap">
-														<Badge colorScheme={item.isCleanup ? 'amber' : 'blue'} variant="subtle">
+														<Badge
+															colorScheme={item.isCleanup ? 'blackAlpha' : 'blue'}
+															variant="subtle"
+														>
 															{item.kind}
 														</Badge>
 														{Object.keys(item.req).length > 0 ? (

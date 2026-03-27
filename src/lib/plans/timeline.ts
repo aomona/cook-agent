@@ -30,19 +30,7 @@ export type PlanTimelineItemData = {
 const DEFAULT_GROUP_ID = 'shared';
 const GROUP_COLORS = ['#2563eb', '#059669', '#dc2626', '#7c3aed', '#0891b2', '#d97706'];
 
-const getTimelineColor = ({
-	groupColor,
-	kind,
-	isCleanup,
-}: {
-	groupColor: string;
-	kind: string;
-	isCleanup: boolean;
-}): string => {
-	if (isCleanup) {
-		return '#d97706';
-	}
-
+const getTimelineColor = ({ groupColor, kind }: { groupColor: string; kind: string }): string => {
 	if (kind === 'wait') {
 		return '#22c55e';
 	}
@@ -109,7 +97,6 @@ export const buildPlanTimelineData = ({
 			groupColor: getTimelineColor({
 				groupColor: baseGroupColor,
 				kind: step.kind,
-				isCleanup,
 			}),
 			id: step.id,
 			isCleanup,

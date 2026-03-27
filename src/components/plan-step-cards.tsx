@@ -1,6 +1,5 @@
 import { Badge, Card, Flex, Heading, Text, VStack } from '@workspaces/ui';
 import { formatStructuredAmount } from '@/lib/plans/presentation';
-import { isCleanupPlanStep } from '@/lib/plans/step-tags';
 import type { PlanDocument } from '@/lib/plans/types';
 
 const getKindLabel = (kind: PlanDocument['steps'][number]['kind']): string => {
@@ -23,7 +22,7 @@ const getKindLabel = (kind: PlanDocument['steps'][number]['kind']): string => {
 const getKindColorScheme = (kind: PlanDocument['steps'][number]['kind']): string => {
 	switch (kind) {
 		case 'cleanup':
-			return 'amber';
+			return 'blackAlpha';
 		case 'cook':
 			return 'blue';
 		case 'finish':
@@ -61,15 +60,8 @@ export const PlanStepCards = ({
 	);
 
 	return plan.steps.map((step, index) => {
-		const isCleanupStep = isCleanupPlanStep(step);
-
 		return (
-			<Card.Root
-				key={step.id}
-				borderColor={isCleanupStep ? 'amber.300' : undefined}
-				bg={isCleanupStep ? 'amber.50' : undefined}
-				variant="outline"
-			>
+			<Card.Root key={step.id} variant="outline">
 				<Card.Body gap="sm">
 					<Flex align="start" justify="space-between" gap="sm" wrap="wrap">
 						<VStack align="stretch" gap="xs">

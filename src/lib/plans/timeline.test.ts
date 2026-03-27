@@ -107,7 +107,7 @@ describe('buildPlanTimelineData', () => {
 		expect(result.totalMinutes).toBe(16);
 	});
 
-	test('uses cleanup color for cleanup steps', () => {
+	test('keeps cleanup steps on their group color', () => {
 		const result = buildPlanTimelineData({
 			plan,
 			recipeTitleById: {
@@ -117,7 +117,7 @@ describe('buildPlanTimelineData', () => {
 		});
 
 		expect(result.items.find((item) => item.id === 'shared:cleanup')).toMatchObject({
-			groupColor: '#d97706',
+			groupColor: '#475569',
 			isCleanup: true,
 		});
 	});
