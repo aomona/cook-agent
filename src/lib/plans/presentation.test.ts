@@ -21,6 +21,29 @@ describe('formatIngredientLine', () => {
 			}),
 		).toBe('塩');
 	});
+
+	test('formats structured quantity and unit without relying on raw amount text', () => {
+		expect(
+			formatIngredientLine({
+				amountValue: 0.5,
+				id: 'ingredient-1',
+				name: '玉ねぎ',
+				unit: '個',
+			}),
+		).toBe('玉ねぎ (0.5個)');
+	});
+
+	test('formats quantity ranges with units', () => {
+		expect(
+			formatIngredientLine({
+				amountMax: 2,
+				amountMin: 1,
+				id: 'ingredient-1',
+				name: 'カレールウ',
+				unit: '人前',
+			}),
+		).toBe('カレールウ (1~2人前)');
+	});
 });
 
 describe('scaleIngredientLine', () => {
@@ -143,5 +166,36 @@ describe('scaleIngredientLine', () => {
 				requestedServings: 4,
 			}),
 		).toBe('卵 6〜8個');
+	});
+
+	test('scales structured quantity values', () => {
+		expect(
+			scaleIngredientLine({
+				baseServings: 2,
+				ingredient: {
+					amountValue: 0.5,
+					id: 'ingredient-1',
+					name: '玉ねぎ',
+					unit: '個',
+				},
+				requestedServings: 4,
+			}),
+		).toBe('玉ねぎ (1個)');
+	});
+
+	test('scales structured quantity ranges', () => {
+		expect(
+			scaleIngredientLine({
+				baseServings: 2,
+				ingredient: {
+					amountMax: 2,
+					amountMin: 1,
+					id: 'ingredient-1',
+					name: 'カレールウ',
+					unit: '人前',
+				},
+				requestedServings: 4,
+			}),
+		).toBe('カレールウ (2~4人前)');
 	});
 });
