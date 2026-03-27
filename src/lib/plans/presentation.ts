@@ -1,4 +1,4 @@
-import type { NormalizedIngredient, RecipeProcessingStatus } from '@/lib/plans/types';
+import type { NormalizedIngredient, PlanMaterial, RecipeProcessingStatus } from '@/lib/plans/types';
 
 export const formatPlanDateTime = (value: string): string =>
 	new Intl.DateTimeFormat('ja-JP', {
@@ -127,6 +127,47 @@ const scaleQuantityExpression = (expression: string, scaleFactor: number): strin
 	}
 
 	return formatScaledNumber(parsedValue * scaleFactor);
+};
+
+export const scalePlanMaterial = (
+	material: PlanMaterial,
+	baseServings: number | undefined,
+	requestedServings: number,
+): PlanMaterial => {
+	if (
+		!baseServings ||
+		baseServings <= 0 ||
+		requestedServings <= 0 ||
+		baseServings === requestedServings
+	) {
+		return material;
+	}
+
+	const scaleFactor = requestedServings / baseServings;
+
+	if (typeof material.amountValue === 'number') {
+		return { ...material, amountValue: material.amountValue * scaleFactor };
+	}
+
+	if (typeof material.amountMin === 'number' && typeof material.amountMax === 'number') {
+		return {
+			...material,
+			amountMin: material.amountMin * scaleFactor,
+			amountMax: material.amountMax * scaleFactor,
+		};
+	}
+
+	if (material.amount) {
+		return {
+			...material,
+			amount: material.amount.replace(
+				/[0-9０-９]+(?:\s+[0-9０-９]+\/[0-9０-９]+|\/[0-9０-９]+|\.[0-9０-９]+)?(?:\s*[〜~]\s*[0-9０-９]+(?:\s+[0-9０-９]+\/[0-9０-９]+|\/[0-9０-９]+|\.[0-9０-９]+)?)?/g,
+				(token) => scaleQuantityExpression(token, scaleFactor),
+			),
+		};
+	}
+
+	return material;
 };
 
 export const scaleIngredientLine = ({

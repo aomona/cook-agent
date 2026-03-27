@@ -1,9 +1,13 @@
 'use client';
 
-import { Badge, Card, ClientOnly, Flex, ScrollArea, Text, VStack } from '@workspaces/ui';
-import { useState } from 'react';
-import { computeConflicts } from '@/lib/plans/scheduler';
-import { buildPlanTimelineData } from '@/lib/plans/timeline';
+import { Badge, Box, Card, ClientOnly, Flex, Text, VStack } from '@workspaces/ui';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+	computeConflicts,
+	type PlanConflict,
+	type PlanResourceCapacity,
+} from '@/lib/plans/scheduler';
+import { buildPlanTimelineData, type PlanTimelineItemData } from '@/lib/plans/timeline';
 import type { PlanDocument } from '@/lib/plans/types';
 
 type PlanTimelineProps = {
@@ -11,6 +15,20 @@ type PlanTimelineProps = {
 	recipeTitleById: Record<string, string>;
 	editable?: boolean;
 };
+
+type TimelineMetrics = {
+	conflicts: PlanConflict[];
+	items: PlanTimelineItemData[];
+	marks: number[];
+	maxMinutes: number;
+	totalMinutes: number;
+};
+
+const MIN_ZOOM_PERCENT = 100;
+const MAX_ZOOM_PERCENT = 300;
+const ZOOM_STEP_PERCENT = 10;
+const MIN_STEP_BAR_WIDTH_PX = 44;
+const TIMELINE_LOADING_MESSAGE = 'タイムラインを読み込んでいます。';
 
 const getTimelineMaxMinutes = (totalMinutes: number): number => {
 	if (totalMinutes <= 45) {
@@ -35,35 +53,340 @@ const getTimeMarks = (maxMinutes: number): number[] => {
 	return marks;
 };
 
-const deriveCapacity = (plan: PlanDocument): Record<string, number> => {
-	const normalized = (plan.metadata?.availableEquipment ?? []).map((equipment) =>
-		equipment.toLowerCase(),
-	);
+const getTimelinePercent = (minute: number, maxMinutes: number): number =>
+	(minute / maxMinutes) * 100;
+
+const getTimelineLength = ({
+	maxMinutes,
+	minute,
+	pixelsPerMinute,
+}: {
+	maxMinutes: number;
+	minute: number;
+	pixelsPerMinute: number;
+}): string =>
+	pixelsPerMinute > 0
+		? `${minute * pixelsPerMinute}px`
+		: `${getTimelinePercent(minute, maxMinutes)}%`;
+
+const getConflictKey = (conflict: Pick<PlanConflict, 'end' | 'res' | 'start'>): string =>
+	`${conflict.res}-${conflict.start}-${conflict.end}`;
+
+const clampZoomPercent = (zoomPercent: number): number =>
+	Math.min(MAX_ZOOM_PERCENT, Math.max(MIN_ZOOM_PERCENT, zoomPercent));
+
+const deriveCapacity = (plan: PlanDocument): PlanResourceCapacity => {
+	const capacity: PlanResourceCapacity = {
+		hands: 1,
+		oven: 0,
+		stove: 0,
+	};
+
+	for (const equipment of plan.metadata?.availableEquipment ?? []) {
+		const normalizedEquipment = equipment.toLowerCase();
+
+		if (normalizedEquipment.includes('oven') || normalizedEquipment.includes('オーブン')) {
+			capacity.oven += 1;
+		}
+
+		if (
+			normalizedEquipment.includes('stove') ||
+			normalizedEquipment.includes('burner') ||
+			normalizedEquipment.includes('コンロ') ||
+			normalizedEquipment.includes('バーナー')
+		) {
+			capacity.stove += 1;
+		}
+	}
 
 	return {
-		hands: 1,
-		oven:
-			normalized.filter((equipment) => equipment.includes('oven') || equipment.includes('オーブン'))
-				.length || 1,
-		stove:
-			normalized.filter(
-				(equipment) =>
-					equipment.includes('stove') ||
-					equipment.includes('burner') ||
-					equipment.includes('コンロ') ||
-					equipment.includes('バーナー'),
-			).length || 1,
+		...capacity,
+		oven: capacity.oven || 1,
+		stove: capacity.stove || 1,
 	};
 };
-export const PlanTimeline = ({ editable = false, plan, recipeTitleById }: PlanTimelineProps) => {
-	const [zoomPercent, setZoomPercent] = useState(100);
-	const { items, totalMinutes } = buildPlanTimelineData({
-		plan,
-		recipeTitleById,
+
+const TimelineStatusBadges = ({
+	editable,
+	totalMinutes,
+	zoomPercent,
+}: {
+	editable: boolean;
+	totalMinutes: number;
+	zoomPercent: number;
+}) => (
+	<Flex gap="sm" wrap="wrap">
+		<Badge colorScheme="blue" variant="subtle">
+			計画 {totalMinutes} 分
+		</Badge>
+		<Badge colorScheme="blackAlpha" variant="subtle">
+			横幅 {zoomPercent}%
+		</Badge>
+		{editable ? (
+			<Badge colorScheme="amber" variant="subtle">
+				編集モード
+			</Badge>
+		) : null}
+	</Flex>
+);
+
+const TimelineConflictAlert = ({ conflicts }: { conflicts: PlanConflict[] }) => {
+	if (conflicts.length === 0) {
+		return null;
+	}
+
+	return (
+		<Card.Root borderColor="red.200" bg="red.50" variant="outline">
+			<Card.Body gap="xs">
+				<Text color="red.700" fontSize="sm" fontWeight="semibold">
+					リソース競合があります
+				</Text>
+				{conflicts.map((conflict) => (
+					<Text key={getConflictKey(conflict)} color="red.700" fontSize="sm">
+						{conflict.text}
+					</Text>
+				))}
+			</Card.Body>
+		</Card.Root>
+	);
+};
+
+const TimelineRuler = ({
+	pixelsPerMinute,
+	conflicts,
+	marks,
+	maxMinutes,
+}: {
+	pixelsPerMinute: number;
+	conflicts: PlanConflict[];
+	marks: number[];
+	maxMinutes: number;
+}) => (
+	<div className="plan-timeline-ruler">
+		<div className="plan-timeline-ruler-labels">
+			{marks.map((mark) => (
+				<span
+					key={mark}
+					className="plan-timeline-ruler-label"
+					style={{ left: getTimelineLength({ maxMinutes, minute: mark, pixelsPerMinute }) }}
+				>
+					{mark}分
+				</span>
+			))}
+		</div>
+		<div className="plan-timeline-ruler-track">
+			{marks.map((mark) => (
+				<div
+					key={mark}
+					className="plan-timeline-grid-line"
+					style={{ left: getTimelineLength({ maxMinutes, minute: mark, pixelsPerMinute }) }}
+				/>
+			))}
+			{conflicts.map((conflict) => (
+				<div
+					key={getConflictKey(conflict)}
+					className="plan-timeline-conflict"
+					style={{
+						left: getTimelineLength({
+							maxMinutes,
+							minute: conflict.start,
+							pixelsPerMinute,
+						}),
+						width: getTimelineLength({
+							maxMinutes,
+							minute: conflict.end - conflict.start,
+							pixelsPerMinute,
+						}),
+					}}
+				/>
+			))}
+		</div>
+	</div>
+);
+
+const TimelineRow = ({
+	item,
+	marks,
+	maxMinutes,
+	pixelsPerMinute,
+}: {
+	item: PlanTimelineItemData;
+	marks: number[];
+	maxMinutes: number;
+	pixelsPerMinute: number;
+}) => {
+	const left = getTimelineLength({
+		maxMinutes,
+		minute: item.startMinute,
+		pixelsPerMinute,
 	});
-	const maxMinutes = getTimelineMaxMinutes(totalMinutes);
-	const marks = getTimeMarks(maxMinutes);
-	const conflicts = computeConflicts(plan.steps, deriveCapacity(plan));
+	const width = getTimelineLength({
+		maxMinutes,
+		minute: item.endMinute - item.startMinute,
+		pixelsPerMinute,
+	});
+	const slackWidth =
+		item.slack > 0
+			? getTimelineLength({
+					maxMinutes,
+					minute: item.durationMinutes + item.slack,
+					pixelsPerMinute,
+				})
+			: null;
+	const minimumStepBarWidth = pixelsPerMinute > 0 ? `${MIN_STEP_BAR_WIDTH_PX}px` : '2.8%';
+
+	return (
+		<div className="plan-timeline-row">
+			<div className="plan-timeline-row-track">
+				{marks.map((mark) => (
+					<div
+						key={`${item.id}-${mark}`}
+						className="plan-timeline-row-grid-line"
+						style={{ left: getTimelineLength({ maxMinutes, minute: mark, pixelsPerMinute }) }}
+					/>
+				))}
+
+				{slackWidth ? (
+					<div
+						className="plan-timeline-step-slack"
+						style={{
+							left,
+							width: slackWidth,
+						}}
+					/>
+				) : null}
+
+				<div
+					className="plan-timeline-step-bar"
+					style={{
+						background: item.groupColor,
+						left,
+						minWidth: minimumStepBarWidth,
+						width,
+					}}
+				>
+					<span className="plan-timeline-step-text">{item.stepNumber}</span>
+				</div>
+			</div>
+		</div>
+	);
+};
+
+const TimelineCanvas = ({
+	conflicts,
+	items,
+	marks,
+	maxMinutes,
+	onWheel,
+	zoomPercent,
+}: {
+	conflicts: PlanConflict[];
+	items: PlanTimelineItemData[];
+	marks: number[];
+	maxMinutes: number;
+	onWheel: (event: WheelEvent) => void;
+	zoomPercent: number;
+}) => {
+	const containerRef = useRef<HTMLDivElement | null>(null);
+	const [containerWidth, setContainerWidth] = useState(0);
+
+	useEffect(() => {
+		const element = containerRef.current;
+
+		if (!element) {
+			return;
+		}
+
+		setContainerWidth(element.clientWidth);
+
+		const resizeObserver = new ResizeObserver((entries) => {
+			const entry = entries[0];
+
+			if (!entry) {
+				return;
+			}
+
+			setContainerWidth(entry.contentRect.width);
+		});
+
+		resizeObserver.observe(element);
+		element.addEventListener('wheel', onWheel, { passive: false });
+
+		return () => {
+			resizeObserver.disconnect();
+			element.removeEventListener('wheel', onWheel);
+		};
+	}, [onWheel]);
+
+	const timelineWidth =
+		containerWidth > 0 ? `${(containerWidth * zoomPercent) / 100}px` : `${zoomPercent}%`;
+	const pixelsPerMinute =
+		containerWidth > 0 ? (containerWidth * zoomPercent) / 100 / maxMinutes : 0;
+
+	return (
+		<Box
+			ref={containerRef}
+			h="34rem"
+			style={{ minWidth: 0, overflowX: 'auto', overflowY: 'auto', width: '100%' }}
+		>
+			<Box
+				className="plan-timeline-shell"
+				style={{
+					minWidth: '100%',
+					width: timelineWidth,
+				}}
+			>
+				<TimelineRuler
+					conflicts={conflicts}
+					marks={marks}
+					maxMinutes={maxMinutes}
+					pixelsPerMinute={pixelsPerMinute}
+				/>
+
+				<div className="plan-timeline-rows">
+					{items.map((item) => (
+						<TimelineRow
+							key={item.id}
+							item={item}
+							marks={marks}
+							maxMinutes={maxMinutes}
+							pixelsPerMinute={pixelsPerMinute}
+						/>
+					))}
+				</div>
+			</Box>
+		</Box>
+	);
+};
+
+export const PlanTimeline = ({ editable = false, plan, recipeTitleById }: PlanTimelineProps) => {
+	const [zoomPercent, setZoomPercent] = useState(MIN_ZOOM_PERCENT);
+	const { conflicts, items, marks, maxMinutes, totalMinutes } = useMemo<TimelineMetrics>(() => {
+		const { items, totalMinutes } = buildPlanTimelineData({
+			plan,
+			recipeTitleById,
+		});
+		const maxMinutes = getTimelineMaxMinutes(totalMinutes);
+
+		return {
+			conflicts: computeConflicts(plan.steps, deriveCapacity(plan)),
+			items,
+			marks: getTimeMarks(maxMinutes),
+			maxMinutes,
+			totalMinutes,
+		};
+	}, [plan, recipeTitleById]);
+	const handleWheel = useCallback((event: WheelEvent) => {
+		if (!event.ctrlKey) {
+			return;
+		}
+
+		event.preventDefault();
+		setZoomPercent((currentZoom) => {
+			const delta = event.deltaY < 0 ? ZOOM_STEP_PERCENT : -ZOOM_STEP_PERCENT;
+			return clampZoomPercent(currentZoom + delta);
+		});
+	}, []);
 
 	return (
 		<Card.Root variant="outline">
@@ -77,136 +400,28 @@ export const PlanTimeline = ({ editable = false, plan, recipeTitleById }: PlanTi
 							明示的な timeline / resource / slack をもとに描画した実行スケジュールです。
 						</Text>
 					</VStack>
-					<Flex gap="sm" wrap="wrap">
-						<Badge colorScheme="blue" variant="subtle">
-							計画 {totalMinutes} 分
-						</Badge>
-						<Badge colorScheme="blackAlpha" variant="subtle">
-							横幅 {zoomPercent}%
-						</Badge>
-						{editable ? (
-							<Badge colorScheme="amber" variant="subtle">
-								編集モード
-							</Badge>
-						) : null}
-					</Flex>
+					<TimelineStatusBadges
+						editable={editable}
+						totalMinutes={totalMinutes}
+						zoomPercent={zoomPercent}
+					/>
 				</Flex>
 
 				<Text color="fg.subtle" fontSize="sm">
 					タイムライン上は手順番号のみ表示します。`Ctrl + スクロール` で横方向だけ拡大できます。
 				</Text>
 
-				{conflicts.length > 0 ? (
-					<Card.Root borderColor="red.200" bg="red.50" variant="outline">
-						<Card.Body gap="xs">
-							<Text color="red.700" fontSize="sm" fontWeight="semibold">
-								リソース競合があります
-							</Text>
-							{conflicts.map((conflict) => (
-								<Text
-									key={`${conflict.res}-${conflict.start}-${conflict.end}`}
-									color="red.700"
-									fontSize="sm"
-								>
-									{conflict.text}
-								</Text>
-							))}
-						</Card.Body>
-					</Card.Root>
-				) : null}
+				<TimelineConflictAlert conflicts={conflicts} />
 
-				<ClientOnly fallback={<Text color="fg.subtle">タイムラインを読み込んでいます。</Text>}>
-					<div
-						onWheel={(event) => {
-							if (!event.ctrlKey) {
-								return;
-							}
-
-							event.preventDefault();
-							setZoomPercent((currentZoom) => {
-								const delta = event.deltaY < 0 ? 10 : -10;
-								return Math.min(300, Math.max(100, currentZoom + delta));
-							});
-						}}
-					>
-						<ScrollArea h="34rem" w="full">
-							<div
-								className="plan-timeline-shell"
-								style={{ minWidth: '100%', width: `${zoomPercent}%` }}
-							>
-								<div className="plan-timeline-ruler">
-									<div className="plan-timeline-ruler-labels">
-										{marks.map((mark) => (
-											<span key={mark}>{mark}分</span>
-										))}
-									</div>
-									<div className="plan-timeline-ruler-track">
-										{marks.map((mark) => (
-											<div
-												key={mark}
-												className="plan-timeline-grid-line"
-												style={{ left: `${(mark / maxMinutes) * 100}%` }}
-											/>
-										))}
-										{conflicts.map((conflict) => (
-											<div
-												key={`${conflict.res}-${conflict.start}-${conflict.end}`}
-												className="plan-timeline-conflict"
-												style={{
-													left: `${(conflict.start / maxMinutes) * 100}%`,
-													width: `${((conflict.end - conflict.start) / maxMinutes) * 100}%`,
-												}}
-											/>
-										))}
-									</div>
-								</div>
-
-								<div className="plan-timeline-rows">
-									{items.map((item) => {
-										const left = (item.startMinute / maxMinutes) * 100;
-										const width = ((item.endMinute - item.startMinute) / maxMinutes) * 100;
-										const slackWidth =
-											item.slack > 0 ? ((item.durationMinutes + item.slack) / maxMinutes) * 100 : 0;
-
-										return (
-											<div key={item.id} className="plan-timeline-row">
-												<div className="plan-timeline-row-track">
-													{marks.map((mark) => (
-														<div
-															key={`${item.id}-${mark}`}
-															className="plan-timeline-row-grid-line"
-															style={{ left: `${(mark / maxMinutes) * 100}%` }}
-														/>
-													))}
-
-													{item.slack > 0 ? (
-														<div
-															className="plan-timeline-step-slack"
-															style={{
-																left: `${left}%`,
-																width: `${slackWidth}%`,
-															}}
-														/>
-													) : null}
-
-													<div
-														className="plan-timeline-step-bar"
-														style={{
-															background: item.groupColor,
-															left: `${left}%`,
-															width: `${Math.max(width, 2.8)}%`,
-														}}
-													>
-														<span className="plan-timeline-step-text">{item.stepNumber}</span>
-													</div>
-												</div>
-											</div>
-										);
-									})}
-								</div>
-							</div>
-						</ScrollArea>
-					</div>
+				<ClientOnly fallback={<Text color="fg.subtle">{TIMELINE_LOADING_MESSAGE}</Text>}>
+					<TimelineCanvas
+						conflicts={conflicts}
+						items={items}
+						marks={marks}
+						maxMinutes={maxMinutes}
+						onWheel={handleWheel}
+						zoomPercent={zoomPercent}
+					/>
 				</ClientOnly>
 			</Card.Body>
 		</Card.Root>

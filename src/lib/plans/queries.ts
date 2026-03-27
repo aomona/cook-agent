@@ -2,6 +2,7 @@ import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { planRecipeSources, plans, planVersions, recipeSources } from '@/db/schema';
 import { planDocumentSchema } from '@/lib/plans/schema';
+import { scalePlanMaterial } from '@/lib/plans/presentation';
 import type {
 	NormalizedRecipe,
 	PlanDocument,
@@ -52,19 +53,28 @@ export type PlanEditorData = {
 	hasIncompatibleActiveVersion?: boolean;
 };
 
-const buildPlanMaterials = (recipes: PlanRecipeSnapshot[]): PlanMaterial[] =>
+const buildPlanMaterials = (
+	recipes: PlanRecipeSnapshot[],
+	requestedServings: number,
+): PlanMaterial[] =>
 	recipes.flatMap((recipe) =>
-		(recipe.normalizedRecipe?.ingredients ?? []).map((ingredient) => ({
-			id: `${recipe.id}:${ingredient.id}`,
-			name: ingredient.name,
-			amount: ingredient.amount,
-			amountValue: ingredient.amountValue,
-			amountMin: ingredient.amountMin,
-			amountMax: ingredient.amountMax,
-			unit: ingredient.unit,
-			recipeSourceId: recipe.id,
-			sourceIngredientId: ingredient.id,
-		})),
+		(recipe.normalizedRecipe?.ingredients ?? []).map((ingredient) =>
+			scalePlanMaterial(
+				{
+					id: `${recipe.id}:${ingredient.id}`,
+					name: ingredient.name,
+					amount: ingredient.amount,
+					amountValue: ingredient.amountValue,
+					amountMin: ingredient.amountMin,
+					amountMax: ingredient.amountMax,
+					unit: ingredient.unit,
+					recipeSourceId: recipe.id,
+					sourceIngredientId: ingredient.id,
+				},
+				recipe.normalizedRecipe?.servings,
+				requestedServings,
+			),
+		),
 	);
 
 const getRecipeLabel = ({
@@ -292,7 +302,7 @@ export const buildPlanGenerationInput = async ({
 		requestedServings: options.requestedServings,
 		availableEquipment: options.availableEquipment,
 		constraints: options.constraints,
-		materials: buildPlanMaterials(plan.recipes),
+		materials: buildPlanMaterials(plan.recipes, options.requestedServings),
 		recipes: plan.recipes.map((recipe) => ({
 			recipeSourceId: recipe.id,
 			sourceType: recipe.type === 'url' ? 'url' : 'manual',

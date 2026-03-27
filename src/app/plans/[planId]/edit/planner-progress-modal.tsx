@@ -1,8 +1,10 @@
 'use client';
 
-import { Button, Card, Flex, For, Modal, Text, VStack } from '@workspaces/ui';
+import { Box, Button, Flex, Modal, Text, VStack } from '@workspaces/ui';
 import type { RefObject } from 'react';
 import { AppSpinner } from '@/components/app-spinner';
+
+const STATUS_DISPLAY_COUNT = 6;
 
 export const PlannerProgressModal = ({
 	isGenerating,
@@ -22,78 +24,109 @@ export const PlannerProgressModal = ({
 	reasoningText: string;
 	statusEndRef: RefObject<HTMLDivElement | null>;
 	onClose: () => void;
-}) => (
-	<Modal.Root
-		autoFocus={false}
-		closeOnEsc={false}
-		closeOnOverlay={false}
-		open={open}
-		restoreFocus={false}
-		withCloseButton={!isGenerating}
-		onClose={() => {
-			if (!isGenerating) {
-				onClose();
-			}
-		}}
-	>
-		<Modal.Overlay backdropFilter="blur(6px)" bg="blackAlpha.400" />
-		<Modal.Content
-			maxH="42vh"
-			mt="4vh"
-			mx="auto"
-			overflow="hidden"
-			w="min(42rem, calc(100% - 2rem))"
+}) => {
+	const recentLogs = progressLogs.slice(-STATUS_DISPLAY_COUNT);
+
+	return (
+		<Modal.Root
+			autoFocus={false}
+			closeOnEsc={false}
+			closeOnOverlay={false}
+			open={open}
+			restoreFocus={false}
+			withCloseButton={!isGenerating}
+			onClose={() => {
+				if (!isGenerating) {
+					onClose();
+				}
+			}}
 		>
-			<Modal.Header px="lg" pt="lg">
-				<Flex align="center" gap="sm" justify="space-between" w="full">
-					<VStack align="stretch" gap="xs">
+			<Modal.Overlay backdropFilter="blur(6px)" bg="blackAlpha.400" />
+			<Modal.Content
+				maxH="72vh"
+				mt="8vh"
+				mx="auto"
+				overflow="hidden"
+				w="min(48rem, calc(100% - 2rem))"
+			>
+				<Modal.Header px="lg" pt="lg" pb="sm">
+					<Flex align="center" gap="sm" w="full">
+						{isGenerating ? <AppSpinner /> : null}
 						<Modal.Title>{progressTitle}</Modal.Title>
-						<Text color="fg.subtle" fontSize="sm">
-							{isGenerating
-								? '推論の要約をリアルタイム表示しています。'
-								: '生成ログを確認できます。'}
-						</Text>
+					</Flex>
+				</Modal.Header>
+
+				<Modal.Body px="lg" pt="sm" pb="md" overflowY="auto">
+					<VStack align="stretch" gap="md">
+						<VStack align="stretch" gap="xs">
+							<Text color="fg.subtle" fontSize="xs" fontWeight="semibold" letterSpacing="wider">
+								推論
+							</Text>
+							<Box
+								bg="bg.subtle"
+								borderRadius="md"
+								maxH="38vh"
+								overflowY="auto"
+								p="md"
+							>
+								<Text
+									className={isGenerating ? 'plan-reasoning-streaming' : undefined}
+									color={reasoningText ? undefined : 'fg.muted'}
+									fontSize="sm"
+									lineHeight="tall"
+									whiteSpace="pre-wrap"
+								>
+									{reasoningText || '推論の要約がここに流れます...'}
+								</Text>
+								<div ref={reasoningEndRef} />
+							</Box>
+						</VStack>
+
+						<VStack align="stretch" gap="xs">
+							<Text color="fg.subtle" fontSize="xs" fontWeight="semibold" letterSpacing="wider">
+								ステータス
+							</Text>
+							<VStack align="stretch" gap="xs">
+								{recentLogs.map((log, index) => {
+									const isLatest = index === recentLogs.length - 1;
+									return (
+										<Flex key={`${log}-${index}`} align="center" gap="sm">
+											<Box
+												borderRadius="full"
+												className={
+													isLatest && isGenerating ? 'plan-status-dot-active' : undefined
+												}
+												bg={isLatest ? 'blue.400' : 'fg.subtle'}
+												flexShrink={0}
+												h="0.375rem"
+												opacity={isLatest ? 1 : 0.3}
+												w="0.375rem"
+											/>
+											<Text
+												color={isLatest ? 'fg.default' : 'fg.subtle'}
+												fontFamily="mono"
+												fontSize="xs"
+												opacity={isLatest ? 1 : 0.55}
+											>
+												{log}
+											</Text>
+										</Flex>
+									);
+								})}
+								<div ref={statusEndRef} />
+							</VStack>
+						</VStack>
 					</VStack>
-					{isGenerating ? <AppSpinner /> : null}
-				</Flex>
-			</Modal.Header>
-			<Modal.Body px="lg" py="md">
-				<VStack align="stretch" gap="sm">
-					<Card.Root bg="bg.subtle" variant="outline">
-						<Card.Body gap="sm" maxH="20vh" overflowY="auto">
-							<Text color="fg.subtle" fontSize="sm" fontWeight="semibold">
-								Reasoning
-							</Text>
-							<Text fontFamily="mono" fontSize="sm" whiteSpace="pre-wrap">
-								{reasoningText || '推論の要約がここに流れます。'}
-							</Text>
-							<div ref={reasoningEndRef} />
-						</Card.Body>
-					</Card.Root>
-					<Card.Root bg="bg.muted" variant="outline">
-						<Card.Body gap="xs" maxH="10vh" overflowY="auto">
-							<Text color="fg.subtle" fontSize="sm" fontWeight="semibold">
-								Status
-							</Text>
-							<For each={progressLogs}>
-								{(log, index) => (
-									<Text key={`${log}-${index}`} fontFamily="mono" fontSize="xs">
-										{log}
-									</Text>
-								)}
-							</For>
-							<div ref={statusEndRef} />
-						</Card.Body>
-					</Card.Root>
-				</VStack>
-			</Modal.Body>
-			{isGenerating ? null : (
-				<Modal.Footer px="lg" pb="lg" pt="sm">
-					<Button onClick={onClose} variant="solid">
-						閉じる
-					</Button>
-				</Modal.Footer>
-			)}
-		</Modal.Content>
-	</Modal.Root>
-);
+				</Modal.Body>
+
+				{isGenerating ? null : (
+					<Modal.Footer px="lg" pb="lg" pt="sm">
+						<Button onClick={onClose} variant="solid">
+							閉じる
+						</Button>
+					</Modal.Footer>
+				)}
+			</Modal.Content>
+		</Modal.Root>
+	);
+};

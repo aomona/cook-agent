@@ -33,8 +33,36 @@ body {
 	color: var(--ui-colors-blue-500, #3b82f6);
 }
 
-.plan-timeline {
-	min-width: 56rem;
+@keyframes plan-status-dot-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.25;
+	}
+}
+
+.plan-status-dot-active {
+	animation: plan-status-dot-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes plan-reasoning-cursor-blink {
+	0%,
+	100% {
+		opacity: 0.7;
+	}
+	50% {
+		opacity: 0;
+	}
+}
+
+.plan-reasoning-streaming::after {
+	content: '▋';
+	display: inline-block;
+	margin-left: 0.1em;
+	animation: plan-reasoning-cursor-blink 0.9s step-end infinite;
+	opacity: 0.7;
 }
 
 .plan-timeline-shell {
@@ -48,17 +76,30 @@ body {
 }
 
 .plan-timeline-ruler-labels {
-	display: flex;
-	justify-content: space-between;
+	position: relative;
+	height: 1rem;
 	color: color-mix(in srgb, currentColor 50%, transparent);
 	font-size: 0.75rem;
+}
+
+.plan-timeline-ruler-label {
+	position: absolute;
+	top: 0;
+	transform: translateX(-50%);
+	white-space: nowrap;
+}
+
+.plan-timeline-ruler-label:first-child {
+	transform: translateX(0);
+}
+
+.plan-timeline-ruler-label:last-child {
+	transform: translateX(-100%);
 }
 
 .plan-timeline-ruler-track {
 	position: relative;
 	height: 0.5rem;
-	border-radius: 9999px;
-	background: color-mix(in srgb, currentColor 8%, white);
 	overflow: hidden;
 }
 
@@ -80,7 +121,6 @@ body {
 
 .plan-timeline-rows {
 	display: grid;
-	gap: 0.75rem;
 }
 
 .plan-timeline-row {
@@ -92,8 +132,6 @@ body {
 .plan-timeline-row-track {
 	position: relative;
 	height: 3.5rem;
-	border-radius: 0.9rem;
-	background: color-mix(in srgb, currentColor 6%, white);
 	overflow: hidden;
 }
 
@@ -114,7 +152,6 @@ body {
 	height: 2.6rem;
 	padding-inline: 0.75rem;
 	border-radius: 0.8rem;
-	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
 	color: #fff;
 	overflow: hidden;
 }
