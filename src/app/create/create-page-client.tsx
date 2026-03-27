@@ -1,30 +1,17 @@
 'use client';
 
-import {
-	Badge,
-	Button,
-	Card,
-	Flex,
-	For,
-	Heading,
-	Input,
-	Loading,
-	Modal,
-	SegmentedControl,
-	Status,
-	Text,
-	Textarea,
-	useDisclosure,
-	useNotice,
-	VStack,
-} from '@workspaces/ui';
+import { Button, Flex, For, Heading, Text, useDisclosure, useNotice, VStack } from '@workspaces/ui';
 import NextLink from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CreatePlanData, CreateRecipeItem, RecipeInputMode } from '@/lib/create-session';
-
-const pendingStatuses = new Set(['queued', 'processing']);
-
-const isTemporaryRecipeId = (recipeId: string): boolean => recipeId.startsWith('temp-');
+import {
+	addRecipeToPlanAction,
+	deleteRecipeFromPlanAction,
+	updateRecipeServingsAction,
+} from './actions';
+import { AddRecipeModal } from './add-recipe-modal';
+import { RecipeCard } from './recipe-card';
+import { isPendingRecipe, isTemporaryCreateRecipeId } from './recipe-status';
 
 const getErrorMessage = (error: unknown): string => {
 	if (error instanceof Error && error.message) {
@@ -34,46 +21,30 @@ const getErrorMessage = (error: unknown): string => {
 	return '処理に失敗しました。';
 };
 
-const isPendingRecipe = (recipe: CreateRecipeItem): boolean =>
-	pendingStatuses.has(recipe.processingStatus);
-
 const getCanProceed = (recipes: CreateRecipeItem[]): boolean =>
 	recipes.length > 0 &&
 	recipes.every(
 		(recipe) => recipe.processingStatus === 'completed' && !recipe.requiresServingsInput,
 	);
 
-const RecipeStatus = ({
-	recipe,
-	onRetry,
-}: {
-	recipe: CreateRecipeItem;
-	onRetry: (recipeId: string) => void;
-}) => {
-	if (recipe.processingStatus === 'completed') {
-		return <Status value="success">抽出完了</Status>;
-	}
-
-	if (recipe.processingStatus === 'failed') {
-		return (
-			<Flex align="center" gap="sm" wrap="wrap">
-				<Status value="error">抽出に失敗しました</Status>
-				{isTemporaryRecipeId(recipe.id) ? null : (
-					<Button size="sm" variant="ghost" onClick={() => onRetry(recipe.id)}>
-						再試行
-					</Button>
-				)}
-			</Flex>
-		);
-	}
-
-	return (
-		<Flex align="center" color="fg.subtle" gap="sm">
-			<Loading.Oval color="blue.500" fontSize="lg" />
-			<Text fontSize="sm">レシピを抽出中...</Text>
-		</Flex>
+const getInitialServingsInputMap = (plan: CreatePlanData): Record<string, string> =>
+	Object.fromEntries(
+		plan.recipes.map((recipe) => [recipe.id, recipe.normalizedServings?.toString() ?? '']),
 	);
-};
+
+const mergeServingsInputMap = ({
+	currentMap,
+	recipes,
+}: {
+	currentMap: Record<string, string>;
+	recipes: CreateRecipeItem[];
+}): Record<string, string> =>
+	Object.fromEntries(
+		recipes.map((recipe) => [
+			recipe.id,
+			currentMap[recipe.id] ?? recipe.normalizedServings?.toString() ?? '',
+		]),
+	);
 
 export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData }) => {
 	const { open, onClose, onOpen } = useDisclosure();
@@ -83,26 +54,12 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 	const [plan, setPlan] = useState<CreatePlanData>(initialPlan);
 	const [deletingRecipeIds, setDeletingRecipeIds] = useState<string[]>([]);
 	const [servingsInputByRecipeId, setServingsInputByRecipeId] = useState<Record<string, string>>(
-		() =>
-			Object.fromEntries(
-				initialPlan.recipes.map((recipe) => [
-					recipe.id,
-					recipe.normalizedServings?.toString() ?? '',
-				]),
-			),
+		() => getInitialServingsInputMap(initialPlan),
 	);
 	const [savingServingsRecipeIds, setSavingServingsRecipeIds] = useState<string[]>([]);
 	const processingRecipeIdsRef = useRef<Set<string>>(new Set());
 	const scheduledRecipeIdsRef = useRef<Set<string>>(new Set());
 	const notice = useNotice();
-
-	const modeItems = useMemo(
-		() => [
-			{ label: 'URL', value: 'url' },
-			{ label: 'Text', value: 'text' },
-		],
-		[],
-	);
 
 	const refreshPlan = useCallback(async (): Promise<void> => {
 		const response = await fetch(`/api/plans/${plan.id}`, {
@@ -115,13 +72,11 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 
 		const payload = (await response.json()) as { plan: CreatePlanData };
 		setPlan(payload.plan);
-		setServingsInputByRecipeId(
-			Object.fromEntries(
-				payload.plan.recipes.map((recipe) => [
-					recipe.id,
-					recipe.normalizedServings?.toString() ?? '',
-				]),
-			),
+		setServingsInputByRecipeId((currentMap) =>
+			mergeServingsInputMap({
+				currentMap,
+				recipes: payload.plan.recipes,
+			}),
 		);
 	}, [plan.id]);
 
@@ -148,7 +103,7 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 				continue;
 			}
 
-			if (isTemporaryRecipeId(recipe.id) || scheduledRecipeIdsRef.current.has(recipe.id)) {
+			if (isTemporaryCreateRecipeId(recipe.id) || scheduledRecipeIdsRef.current.has(recipe.id)) {
 				continue;
 			}
 
@@ -174,7 +129,9 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 		const rawValue = mode === 'url' ? urlValue : textValue;
 		const value = rawValue.trim();
 
-		if (!value) return;
+		if (!value) {
+			return;
+		}
 
 		const optimisticRecipe: CreateRecipeItem = {
 			id: `temp-${crypto.randomUUID()}`,
@@ -201,23 +158,11 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 		onClose();
 
 		try {
-			const response = await fetch(`/api/plans/${plan.id}/recipes`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({
-					type: mode,
-					value,
-				}),
+			const payload = await addRecipeToPlanAction({
+				planId: plan.id,
+				type: mode,
+				value,
 			});
-
-			if (!response.ok) {
-				const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-				throw new Error(payload?.message ?? 'レシピの追加に失敗しました。');
-			}
-
-			const payload = (await response.json()) as { recipe: CreateRecipeItem };
 			scheduledRecipeIdsRef.current.add(payload.recipe.id);
 
 			setPlan((currentPlan) => ({
@@ -225,6 +170,10 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 				recipes: currentPlan.recipes.map((recipe) =>
 					recipe.id === optimisticRecipe.id ? payload.recipe : recipe,
 				),
+			}));
+			setServingsInputByRecipeId((currentMap) => ({
+				...currentMap,
+				[payload.recipe.id]: payload.recipe.normalizedServings?.toString() ?? '',
 			}));
 
 			window.setTimeout(() => {
@@ -282,22 +231,11 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 		setSavingServingsRecipeIds((currentIds) => [...currentIds, recipeId]);
 
 		try {
-			const response = await fetch(`/api/plans/${plan.id}/recipes/${recipeId}`, {
-				method: 'PATCH',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({
-					servings,
-				}),
+			const payload = await updateRecipeServingsAction({
+				planId: plan.id,
+				recipeId,
+				servings,
 			});
-
-			if (!response.ok) {
-				const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-				throw new Error(payload?.message ?? '人数の保存に失敗しました。');
-			}
-
-			const payload = (await response.json()) as { recipe: CreateRecipeItem };
 
 			setPlan((currentPlan) => {
 				const nextRecipes = currentPlan.recipes.map((recipe) =>
@@ -328,7 +266,7 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 	};
 
 	const handleDeleteRecipe = async (recipeId: string): Promise<void> => {
-		if (isTemporaryRecipeId(recipeId)) {
+		if (isTemporaryCreateRecipeId(recipeId)) {
 			return;
 		}
 
@@ -345,14 +283,10 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 		});
 
 		try {
-			const response = await fetch(`/api/plans/${plan.id}/recipes/${recipeId}`, {
-				method: 'DELETE',
+			await deleteRecipeFromPlanAction({
+				planId: plan.id,
+				recipeId,
 			});
-
-			if (!response.ok) {
-				const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-				throw new Error(payload?.message ?? 'レシピの削除に失敗しました。');
-			}
 		} catch (error) {
 			await refreshPlan();
 			notice({
@@ -385,83 +319,26 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 				<VStack align="stretch" gap="md">
 					<For each={plan.recipes}>
 						{(recipe) => (
-							<Card.Root key={recipe.id} variant="outline">
-								<Card.Body gap="sm">
-									<Flex align="center" w="full" gap="sm" justify="space-between">
-										<Flex align="center" gap="sm" wrap="wrap">
-											<Badge
-												colorScheme={recipe.type === 'url' ? 'blue' : 'amber'}
-												variant="subtle"
-											>
-												{recipe.type === 'url' ? 'URL' : 'TEXT'}
-											</Badge>
-											<RecipeStatus recipe={recipe} onRetry={handleRetry} />
-										</Flex>
-										{isTemporaryRecipeId(recipe.id) ? null : (
-											<Button
-												colorScheme="red"
-												loading={deletingRecipeIds.includes(recipe.id)}
-												size="sm"
-												variant="ghost"
-												onClick={() => void handleDeleteRecipe(recipe.id).catch(() => undefined)}
-											>
-												削除
-											</Button>
-										)}
-									</Flex>
-
-									{recipe.title ? <Heading size="md">{recipe.title}</Heading> : null}
-
-									<Text
-										color={recipe.title ? 'fg.subtle' : 'inherit'}
-										lineClamp={2}
-										overflowWrap="anywhere"
-										whiteSpace="pre-wrap"
-									>
-										{recipe.label}
-									</Text>
-
-									{recipe.summary ? <Text whiteSpace="pre-wrap">{recipe.summary}</Text> : null}
-
-									{recipe.processingStatus === 'completed' && recipe.requiresServingsInput ? (
-										<Card.Root bg="bg.subtle" variant="outline">
-											<Card.Body gap="sm">
-												<Text fontWeight="medium">このレシピの元人数を入力してください</Text>
-												<Text color="fg.subtle" fontSize="sm">
-													材料換算に使うので、レシピ本文の元人数を入れてください。
-												</Text>
-												<Flex
-													align={{ base: 'stretch', md: 'end' }}
-													direction={{ base: 'column', md: 'row' }}
-													gap="sm"
-												>
-													<Input
-														min={1}
-														type="number"
-														value={servingsInputByRecipeId[recipe.id] ?? ''}
-														onChange={(event) =>
-															setServingsInputByRecipeId((currentMap) => ({
-																...currentMap,
-																[recipe.id]: event.target.value,
-															}))
-														}
-													/>
-													<Button
-														loading={savingServingsRecipeIds.includes(recipe.id)}
-														onClick={() => void handleUpdateServings(recipe.id)}
-													>
-														保存
-													</Button>
-												</Flex>
-											</Card.Body>
-										</Card.Root>
-									) : null}
-
-									{recipe.processingError ? (
-										<Text color="danger">{recipe.processingError}</Text>
-									) : null}
-								</Card.Body>
-							</Card.Root>
+							<RecipeCard
+								key={recipe.id}
+								deleting={deletingRecipeIds.includes(recipe.id)}
+								recipe={recipe}
+								savingServings={savingServingsRecipeIds.includes(recipe.id)}
+								servingsValue={servingsInputByRecipeId[recipe.id] ?? ''}
+								onDelete={(recipeId) => {
+									void handleDeleteRecipe(recipeId).catch(() => undefined);
+								}}
+								onRetry={handleRetry}
+								onSaveServings={(recipeId) => {
+									void handleUpdateServings(recipeId);
+								}}
+								onServingsChange={(recipeId, value) =>
+									setServingsInputByRecipeId((currentMap) => ({
+										...currentMap,
+										[recipeId]: value,
+									}))
+								}
+							/>
 						)}
 					</For>
 				</VStack>
@@ -492,55 +369,17 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 					</VStack>
 				</Flex>
 
-				<Modal.Root open={open} size="lg" onClose={onClose}>
-					<Modal.Overlay backdropFilter="blur(4px)" />
-					<Modal.Content mx="md" w="calc(100% - 2rem)">
-						<Modal.Header px="lg" pt="lg">
-							<Modal.Title>レシピを追加</Modal.Title>
-						</Modal.Header>
-
-						<Modal.Body px="lg" py="md">
-							<VStack align="stretch" gap="md">
-								<SegmentedControl.Root
-									items={modeItems}
-									value={mode}
-									onChange={(value) => setMode(value as RecipeInputMode)}
-								/>
-
-								{mode === 'url' ? (
-									<VStack align="stretch" gap="sm">
-										<Text fontWeight="medium">URL</Text>
-										<Input
-											aria-label="レシピURL"
-											placeholder="https://example.com/recipe"
-											value={urlValue}
-											onChange={(event) => setUrlValue(event.target.value)}
-										/>
-									</VStack>
-								) : (
-									<VStack align="stretch" gap="sm">
-										<Text fontWeight="medium">Text</Text>
-										<Textarea
-											aria-label="レシピテキスト"
-											autosize
-											minH="9rem"
-											placeholder="材料や手順のメモを貼り付けてください"
-											value={textValue}
-											onChange={(event) => setTextValue(event.target.value)}
-										/>
-									</VStack>
-								)}
-							</VStack>
-						</Modal.Body>
-
-						<Modal.Footer px="lg" pb="lg" pt="sm">
-							<Button variant="ghost" onClick={onClose}>
-								閉じる
-							</Button>
-							<Button onClick={() => void handleAddRecipe()}>追加する</Button>
-						</Modal.Footer>
-					</Modal.Content>
-				</Modal.Root>
+				<AddRecipeModal
+					mode={mode}
+					open={open}
+					textValue={textValue}
+					urlValue={urlValue}
+					onClose={onClose}
+					onModeChange={setMode}
+					onSubmit={() => void handleAddRecipe()}
+					onTextChange={setTextValue}
+					onUrlChange={setUrlValue}
+				/>
 			</VStack>
 		</Flex>
 	);

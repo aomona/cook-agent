@@ -5,11 +5,8 @@ import {
 	Button,
 	Card,
 	Flex,
-	For,
 	Heading,
 	Input,
-	Loading,
-	Modal,
 	Status,
 	Text,
 	Textarea,
@@ -17,16 +14,14 @@ import {
 	VStack,
 } from '@workspaces/ui';
 import { useRouter } from 'next/navigation';
-import { useMemo, useRef, useState } from 'react';
-import { PlanTimeline } from '@/components/plan-timeline';
-import { scaleIngredientLine } from '@/lib/plans/presentation';
+import { useRef, useState } from 'react';
+import { PlanStepCards } from '@/components/plan-step-cards';
+import { PlanTimelineLazy } from '@/components/plan-timeline-lazy';
+import { RecipeIngredientsSection } from '@/components/recipe-ingredients-section';
 import type { PlanEditorData } from '@/lib/plans/queries';
 import type { PlanDocument } from '@/lib/plans/types';
-
-type PlannerStreamMessage =
-	| { type: 'status'; message: string }
-	| { type: 'reasoning'; delta: string }
-	| { type: 'tool'; message: string };
+import { PlannerProgressModal } from './planner-progress-modal';
+import { type PlannerStreamMessage, readEventStream } from './planner-stream';
 
 const getErrorMessage = (error: unknown): string => {
 	if (error instanceof Error && error.message) {
@@ -71,73 +66,6 @@ const scrollIntoViewOnNextFrame = (element: HTMLDivElement | null): void => {
 	});
 };
 
-const readEventStream = async ({
-	onError,
-	onMessage,
-	response,
-}: {
-	response: Response;
-	onMessage: (event: string, payload: unknown) => void;
-	onError: (message: string) => void;
-}): Promise<void> => {
-	if (!response.body) {
-		throw new Error('ストリームを開始できませんでした。');
-	}
-
-	const reader = response.body.getReader();
-	const decoder = new TextDecoder();
-	let buffer = '';
-
-	const flushBlock = (block: string): void => {
-		const lines = block
-			.split('\n')
-			.map((line) => line.trim())
-			.filter(Boolean);
-
-		if (lines.length === 0) {
-			return;
-		}
-
-		const eventLine = lines.find((line) => line.startsWith('event:'));
-		const dataLines = lines.filter((line) => line.startsWith('data:'));
-		const event = eventLine?.slice('event:'.length).trim() ?? 'message';
-		const data = dataLines.map((line) => line.slice('data:'.length).trim()).join('\n');
-		let payload: unknown;
-
-		try {
-			payload = JSON.parse(data);
-		} catch {
-			onError('ストリームの解析に失敗しました。');
-			return;
-		}
-
-		onMessage(event, payload);
-	};
-
-	while (true) {
-		const { done, value } = await reader.read();
-
-		if (done) {
-			break;
-		}
-
-		buffer += decoder.decode(value, { stream: true });
-
-		const blocks = buffer.split('\n\n');
-		buffer = blocks.pop() ?? '';
-
-		for (const block of blocks) {
-			flushBlock(block);
-		}
-	}
-
-	buffer += decoder.decode();
-
-	if (buffer.trim()) {
-		flushBlock(buffer);
-	}
-};
-
 export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorData }) => {
 	const router = useRouter();
 	const notice = useNotice();
@@ -169,37 +97,30 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 	const reasoningEndRef = useRef<HTMLDivElement | null>(null);
 	const statusEndRef = useRef<HTMLDivElement | null>(null);
 
-	const recipeTitleById = useMemo(
-		() =>
-			Object.fromEntries(
-				initialPlan.recipes.map((recipe) => [
-					recipe.id,
-					recipe.title ?? recipe.normalizedRecipe?.title ?? recipe.label,
-				]),
-			),
-		[initialPlan.recipes],
+	const recipeTitleById = Object.fromEntries(
+		initialPlan.recipes.map((recipe) => [
+			recipe.id,
+			recipe.title ?? recipe.normalizedRecipe?.title ?? recipe.label,
+		]),
 	);
-	const recipeIngredients = useMemo(
-		() =>
-			(generatedPlan
-				? initialPlan.recipes.filter((recipe) => recipe.normalizedRecipe?.ingredients.length)
-				: []
-			).map((recipe) => ({
-				baseServings: recipe.normalizedRecipe?.servings,
-				id: recipe.id,
-				ingredients: recipe.normalizedRecipe?.ingredients ?? [],
-				requestedServings: generatedPlan?.servings ?? getDefaultServings(initialPlan),
-				title: recipe.title ?? recipe.normalizedRecipe?.title ?? recipe.label,
-			})),
-		[generatedPlan, initialPlan],
-	);
+	const recipeIngredients = generatedPlan
+		? initialPlan.recipes
+				.filter((recipe) => recipe.normalizedRecipe?.ingredients.length)
+				.map((recipe) => ({
+					baseServings: recipe.normalizedRecipe?.servings,
+					id: recipe.id,
+					ingredients: recipe.normalizedRecipe?.ingredients ?? [],
+					requestedServings: generatedPlan.servings,
+					title: recipe.title ?? recipe.normalizedRecipe?.title ?? recipe.label,
+				}))
+		: [];
 
 	const runPlannerStream = async ({
 		body,
 		completeLog,
 		completeTitle,
 		errorTitle,
-		progressTitle,
+		progressTitle: nextProgressTitle,
 		startLog,
 		successDescription,
 		successTitle,
@@ -219,7 +140,7 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 		setIsProgressModalOpen(true);
 		setReasoningText('');
 		setProgressLogs([startLog]);
-		setProgressTitle(progressTitle);
+		setProgressTitle(nextProgressTitle);
 
 		try {
 			const response = await fetch(url, {
@@ -380,79 +301,16 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 
 	return (
 		<>
-			<Modal.Root
-				autoFocus={false}
-				closeOnEsc={false}
-				closeOnOverlay={false}
+			<PlannerProgressModal
+				isGenerating={isGenerating}
+				onClose={() => setIsProgressModalOpen(false)}
 				open={isProgressModalOpen}
-				restoreFocus={false}
-				withCloseButton={!isGenerating}
-				onClose={() => {
-					if (!isGenerating) {
-						setIsProgressModalOpen(false);
-					}
-				}}
-			>
-				<Modal.Overlay backdropFilter="blur(6px)" bg="blackAlpha.400" />
-				<Modal.Content
-					maxH="42vh"
-					mt="4vh"
-					mx="auto"
-					overflow="hidden"
-					w="min(42rem, calc(100% - 2rem))"
-				>
-					<Modal.Header px="lg" pt="lg">
-						<Flex align="center" gap="sm" justify="space-between" w="full">
-							<VStack align="stretch" gap="xs">
-								<Modal.Title>{progressTitle}</Modal.Title>
-								<Text color="fg.subtle" fontSize="sm">
-									{isGenerating
-										? '推論の要約をリアルタイム表示しています。'
-										: '生成ログを確認できます。'}
-								</Text>
-							</VStack>
-							{isGenerating ? <Loading.Oval color="blue.500" fontSize="lg" /> : null}
-						</Flex>
-					</Modal.Header>
-					<Modal.Body px="lg" py="md">
-						<VStack align="stretch" gap="sm">
-							<Card.Root bg="bg.subtle" variant="outline">
-								<Card.Body gap="sm" maxH="20vh" overflowY="auto">
-									<Text color="fg.subtle" fontSize="sm" fontWeight="semibold">
-										Reasoning
-									</Text>
-									<Text fontFamily="mono" fontSize="sm" whiteSpace="pre-wrap">
-										{reasoningText || '推論の要約がここに流れます。'}
-									</Text>
-									<div ref={reasoningEndRef} />
-								</Card.Body>
-							</Card.Root>
-							<Card.Root bg="bg.muted" variant="outline">
-								<Card.Body gap="xs" maxH="10vh" overflowY="auto">
-									<Text color="fg.subtle" fontSize="sm" fontWeight="semibold">
-										Status
-									</Text>
-									<For each={progressLogs}>
-										{(log, index) => (
-											<Text key={`${log}-${index}`} fontFamily="mono" fontSize="xs">
-												{log}
-											</Text>
-										)}
-									</For>
-									<div ref={statusEndRef} />
-								</Card.Body>
-							</Card.Root>
-						</VStack>
-					</Modal.Body>
-					{isGenerating ? null : (
-						<Modal.Footer px="lg" pb="lg" pt="sm">
-							<Button onClick={() => setIsProgressModalOpen(false)} variant="solid">
-								閉じる
-							</Button>
-						</Modal.Footer>
-					)}
-				</Modal.Content>
-			</Modal.Root>
+				progressLogs={progressLogs}
+				progressTitle={progressTitle}
+				reasoningEndRef={reasoningEndRef}
+				reasoningText={reasoningText}
+				statusEndRef={statusEndRef}
+			/>
 
 			<VStack align="stretch" gap="lg">
 				<Card.Root variant="outline">
@@ -506,52 +364,25 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 
 				<VStack align="stretch" gap="md">
 					<Heading size="md">入力レシピ</Heading>
-					<For each={initialPlan.recipes}>
-						{(recipe) => (
-							<Card.Root key={recipe.id} variant="outline">
-								<Card.Body gap="sm">
-									<Flex align="center" justify="space-between" gap="sm" wrap="wrap">
-										<Badge colorScheme={recipe.type === 'url' ? 'blue' : 'amber'} variant="subtle">
-											{recipe.type === 'url' ? 'URL' : 'TEXT'}
-										</Badge>
-										<Status value={recipe.processingStatus === 'completed' ? 'success' : 'warning'}>
-											{recipe.processingStatus === 'completed' ? '抽出完了' : '未完了'}
-										</Status>
-									</Flex>
-									<Heading size="sm">{recipe.title ?? recipe.label}</Heading>
-									{recipe.summary ? <Text>{recipe.summary}</Text> : null}
-								</Card.Body>
-							</Card.Root>
-						)}
-					</For>
+					{initialPlan.recipes.map((recipe) => (
+						<Card.Root key={recipe.id} variant="outline">
+							<Card.Body gap="sm">
+								<Flex align="center" justify="space-between" gap="sm" wrap="wrap">
+									<Badge colorScheme={recipe.type === 'url' ? 'blue' : 'amber'} variant="subtle">
+										{recipe.type === 'url' ? 'URL' : 'TEXT'}
+									</Badge>
+									<Status value={recipe.processingStatus === 'completed' ? 'success' : 'warning'}>
+										{recipe.processingStatus === 'completed' ? '抽出完了' : '未完了'}
+									</Status>
+								</Flex>
+								<Heading size="sm">{recipe.title ?? recipe.label}</Heading>
+								{recipe.summary ? <Text>{recipe.summary}</Text> : null}
+							</Card.Body>
+						</Card.Root>
+					))}
 				</VStack>
 
-				{recipeIngredients.length ? (
-					<VStack align="stretch" gap="md">
-						<Heading size="md">材料一覧</Heading>
-						<For each={recipeIngredients}>
-							{(recipe) => (
-								<Card.Root key={recipe.id} variant="outline">
-									<Card.Body gap="sm">
-										<Heading size="sm">{recipe.title}</Heading>
-										<For each={recipe.ingredients}>
-											{(ingredient) => (
-												<Text key={ingredient.id} whiteSpace="pre-wrap">
-													・
-													{scaleIngredientLine({
-														baseServings: recipe.baseServings,
-														ingredient,
-														requestedServings: recipe.requestedServings,
-													})}
-												</Text>
-											)}
-										</For>
-									</Card.Body>
-								</Card.Root>
-							)}
-						</For>
-					</VStack>
-				) : null}
+				<RecipeIngredientsSection recipes={recipeIngredients} />
 
 				{generatedPlan ? (
 					<VStack align="stretch" gap="md">
@@ -569,63 +400,15 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 							) : null}
 						</Flex>
 
-						<PlanTimeline plan={generatedPlan} recipeTitleById={recipeTitleById} />
+						<PlanTimelineLazy plan={generatedPlan} recipeTitleById={recipeTitleById} />
 
-						<For each={generatedPlan.steps}>
-							{(step, index) => (
-								<Card.Root key={step.id} variant="outline">
-									<Card.Body gap="sm">
-										<Flex align="start" justify="space-between" gap="sm" wrap="wrap">
-											<VStack align="stretch" gap="xs">
-												<Text color="fg.subtle" fontSize="sm">
-													STEP {index + 1}
-												</Text>
-												<Heading size="sm">{step.title}</Heading>
-											</VStack>
-											<Badge colorScheme="blue" variant="subtle">
-												約{step.estimatedMinutes}分
-											</Badge>
-										</Flex>
-
-										<Text whiteSpace="pre-wrap">{step.description}</Text>
-
-										{step.recipeSourceId ? (
-											<Text color="fg.subtle" fontSize="sm">
-												元レシピ: {recipeTitleById[step.recipeSourceId] ?? step.recipeSourceId}
-											</Text>
-										) : null}
-
-										{step.dependencies.length > 0 ? (
-											<Text color="fg.subtle" fontSize="sm">
-												依存: {step.dependencies.join(', ')}
-											</Text>
-										) : null}
-
-										<Text color="fg.subtle" fontSize="sm">
-											並行実行: {step.canParallelize ? '可能' : '不可'}
-										</Text>
-
-										{step.timers?.length ? (
-											<Text color="fg.subtle" fontSize="sm">
-												タイマー: {step.timers.map((timer) => timer.label).join(', ')}
-											</Text>
-										) : null}
-
-										{step.notesForUser?.length ? (
-											<Text color="fg.subtle" fontSize="sm">
-												注意: {step.notesForUser.join(' / ')}
-											</Text>
-										) : null}
-
-										{step.recoveryTips?.length ? (
-											<Text color="fg.subtle" fontSize="sm">
-												リカバリー: {step.recoveryTips.join(' / ')}
-											</Text>
-										) : null}
-									</Card.Body>
-								</Card.Root>
-							)}
-						</For>
+						<PlanStepCards
+							plan={generatedPlan}
+							recipeTitleById={recipeTitleById}
+							showRecipeSource
+							showTimers
+							useDurationBadge
+						/>
 					</VStack>
 				) : null}
 

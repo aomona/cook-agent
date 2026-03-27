@@ -44,6 +44,8 @@ export type PlanEditorData = {
 	title: string;
 	status: 'draft' | 'ready' | 'archived';
 	requestedServings: number | null;
+	createdAt: string;
+	updatedAt: string;
 	recipes: PlanRecipeSnapshot[];
 	activeVersion: ActivePlanVersionData | null;
 };
@@ -155,6 +157,8 @@ export const getOwnedPlanEditorData = async (
 			title: plans.title,
 			status: plans.status,
 			requestedServings: plans.requestedServings,
+			createdAt: plans.createdAt,
+			updatedAt: plans.updatedAt,
 			activeVersionId: plans.activeVersionId,
 		})
 		.from(plans)
@@ -217,6 +221,8 @@ export const getOwnedPlanEditorData = async (
 		title: plan.title,
 		status: plan.status,
 		requestedServings: plan.requestedServings,
+		createdAt: plan.createdAt.toISOString(),
+		updatedAt: plan.updatedAt.toISOString(),
 		recipes,
 		activeVersion:
 			activeVersion && parsedActivePlan?.success

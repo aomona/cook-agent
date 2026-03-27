@@ -3,6 +3,7 @@
 import { Button, Modal, Text, useDisclosure, useNotice, VStack } from '@workspaces/ui';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { deletePlanAction } from './actions';
 
 const getErrorMessage = (error: unknown): string => {
 	if (error instanceof Error && error.message) {
@@ -22,14 +23,7 @@ export const DeletePlanButton = ({ planId }: { planId: string }) => {
 		setIsDeleting(true);
 
 		try {
-			const response = await fetch(`/api/plans/${planId}`, {
-				method: 'DELETE',
-			});
-
-			if (!response.ok) {
-				const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-				throw new Error(payload?.message ?? '計画の削除に失敗しました。');
-			}
+			await deletePlanAction({ planId });
 
 			notice({
 				description: '計画を削除しました。',

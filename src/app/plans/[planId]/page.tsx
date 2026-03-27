@@ -2,14 +2,15 @@ import { Badge, Button, Card, Flex, Heading, Text, VStack } from '@workspaces/ui
 import { cookies } from 'next/headers';
 import NextLink from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { PlanTimeline } from '@/components/plan-timeline';
-import { getCreatePlanData, getRequestActor } from '@/lib/create-session';
+import { PlanStepCards } from '@/components/plan-step-cards';
+import { PlanTimelineLazy } from '@/components/plan-timeline-lazy';
+import { RecipeIngredientsSection } from '@/components/recipe-ingredients-section';
+import { getRequestActor } from '@/lib/create-session';
 import {
 	formatPlanDateTime,
 	getPlanStatusColorScheme,
 	getPlanStatusLabel,
 	getRecipeProcessingLabel,
-	scaleIngredientLine,
 } from '@/lib/plans/presentation';
 import { getOwnedPlanEditorData } from '@/lib/plans/queries';
 import { DeletePlanButton } from './delete-plan-button';
@@ -23,21 +24,29 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 	}
 
 	const { planId } = await params;
-	const plan = await getCreatePlanData(planId, actor.userId);
-	const editorPlan = await getOwnedPlanEditorData(planId, actor.userId);
+	const plan = await getOwnedPlanEditorData(planId, actor.userId);
 
-	if (!plan || !editorPlan) {
+	if (!plan) {
 		notFound();
 	}
 
-	const requestedServings = editorPlan.activeVersion?.plan.servings ?? plan.requestedServings ?? 1;
+	const requestedServings = plan.activeVersion?.plan.servings ?? plan.requestedServings ?? 1;
 
 	const recipeTitleById = Object.fromEntries(
-		editorPlan.recipes.map((recipe) => [
+		plan.recipes.map((recipe) => [
 			recipe.id,
 			recipe.title ?? recipe.normalizedRecipe?.title ?? recipe.label,
 		]),
 	);
+	const recipeIngredients = plan.recipes
+		.filter((recipe) => recipe.normalizedRecipe?.ingredients.length)
+		.map((recipe) => ({
+			baseServings: recipe.normalizedRecipe?.servings,
+			id: recipe.id,
+			ingredients: recipe.normalizedRecipe?.ingredients ?? [],
+			requestedServings,
+			title: recipe.title ?? recipe.normalizedRecipe?.title ?? recipe.label,
+		}));
 
 	return (
 		<Flex align="center" justify="center" minH="100vh" px="md" py="xl">
@@ -115,42 +124,16 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 					</VStack>
 				)}
 
-				{editorPlan.recipes.some((recipe) => recipe.normalizedRecipe?.ingredients.length) ? (
-					<VStack align="stretch" gap="md">
-						<Heading size="md">材料一覧</Heading>
-						{editorPlan.recipes
-							.filter((recipe) => recipe.normalizedRecipe?.ingredients.length)
-							.map((recipe) => (
-								<Card.Root key={recipe.id} variant="outline">
-									<Card.Body gap="sm">
-										<Heading size="sm">
-											{recipe.title ?? recipe.normalizedRecipe?.title ?? recipe.label}
-										</Heading>
-										{recipe.normalizedRecipe?.ingredients.map((ingredient) => (
-											<Text key={ingredient.id} whiteSpace="pre-wrap">
-												・
-												{scaleIngredientLine({
-													baseServings: recipe.normalizedRecipe?.servings,
-													ingredient,
-													requestedServings,
-												})}
-											</Text>
-										))}
-									</Card.Body>
-								</Card.Root>
-							))}
-					</VStack>
-				) : null}
+				<RecipeIngredientsSection recipes={recipeIngredients} />
 
-				{editorPlan.activeVersion ? (
+				{plan.activeVersion ? (
 					<VStack align="stretch" gap="md">
 						<Flex align="center" justify="space-between" gap="sm" wrap="wrap">
 							<VStack align="stretch" gap="xs">
 								<Heading size="md">生成済み工程</Heading>
 								<Text color="fg.subtle">
-									v{editorPlan.activeVersion.versionNumber} /{' '}
-									{editorPlan.activeVersion.plan.servings}
-									人分 / {editorPlan.activeVersion.plan.steps.length} ステップ
+									v{plan.activeVersion.versionNumber} / {plan.activeVersion.plan.servings}
+									人分 / {plan.activeVersion.plan.steps.length} ステップ
 								</Text>
 							</VStack>
 							<NextLink href={`/plans/${plan.id}/edit`}>
@@ -160,42 +143,9 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 							</NextLink>
 						</Flex>
 
-						<PlanTimeline plan={editorPlan.activeVersion.plan} recipeTitleById={recipeTitleById} />
+						<PlanTimelineLazy plan={plan.activeVersion.plan} recipeTitleById={recipeTitleById} />
 
-						{editorPlan.activeVersion.plan.steps.map((step, index) => (
-							<Card.Root key={step.id} variant="outline">
-								<Card.Body gap="sm">
-									<Flex align="start" justify="space-between" gap="sm" wrap="wrap">
-										<VStack align="stretch" gap="xs">
-											<Text color="fg.subtle" fontSize="sm">
-												STEP {index + 1}
-											</Text>
-											<Heading size="sm">{step.title}</Heading>
-										</VStack>
-										<Text color="fg.subtle">約{step.estimatedMinutes}分</Text>
-									</Flex>
-									<Text whiteSpace="pre-wrap">{step.description}</Text>
-									{step.dependencies.length > 0 ? (
-										<Text color="fg.subtle" fontSize="sm">
-											依存: {step.dependencies.join(', ')}
-										</Text>
-									) : null}
-									<Text color="fg.subtle" fontSize="sm">
-										並行実行: {step.canParallelize ? '可能' : '不可'}
-									</Text>
-									{step.notesForUser?.length ? (
-										<Text color="fg.subtle" fontSize="sm">
-											注意: {step.notesForUser.join(' / ')}
-										</Text>
-									) : null}
-									{step.recoveryTips?.length ? (
-										<Text color="fg.subtle" fontSize="sm">
-											リカバリー: {step.recoveryTips.join(' / ')}
-										</Text>
-									) : null}
-								</Card.Body>
-							</Card.Root>
-						))}
+						<PlanStepCards plan={plan.activeVersion.plan} />
 					</VStack>
 				) : null}
 			</VStack>
