@@ -2,12 +2,14 @@ import { Badge, Button, Card, Flex, Heading, Text, VStack } from '@workspaces/ui
 import { cookies } from 'next/headers';
 import NextLink from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { PlanTimeline } from '@/components/plan-timeline';
 import { getCreatePlanData, getRequestActor } from '@/lib/create-session';
 import {
 	formatPlanDateTime,
 	getPlanStatusColorScheme,
 	getPlanStatusLabel,
 	getRecipeProcessingLabel,
+	scaleIngredientLine,
 } from '@/lib/plans/presentation';
 import { getOwnedPlanEditorData } from '@/lib/plans/queries';
 import { DeletePlanButton } from './delete-plan-button';
@@ -27,6 +29,15 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 	if (!plan || !editorPlan) {
 		notFound();
 	}
+
+	const requestedServings = editorPlan.activeVersion?.plan.servings ?? plan.requestedServings ?? 1;
+
+	const recipeTitleById = Object.fromEntries(
+		editorPlan.recipes.map((recipe) => [
+			recipe.id,
+			recipe.title ?? recipe.normalizedRecipe?.title ?? recipe.label,
+		]),
+	);
 
 	return (
 		<Flex align="center" justify="center" minH="100vh" px="md" py="xl">
@@ -104,6 +115,33 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 					</VStack>
 				)}
 
+				{editorPlan.recipes.some((recipe) => recipe.normalizedRecipe?.ingredients.length) ? (
+					<VStack align="stretch" gap="md">
+						<Heading size="md">材料一覧</Heading>
+						{editorPlan.recipes
+							.filter((recipe) => recipe.normalizedRecipe?.ingredients.length)
+							.map((recipe) => (
+								<Card.Root key={recipe.id} variant="outline">
+									<Card.Body gap="sm">
+										<Heading size="sm">
+											{recipe.title ?? recipe.normalizedRecipe?.title ?? recipe.label}
+										</Heading>
+										{recipe.normalizedRecipe?.ingredients.map((ingredient) => (
+											<Text key={ingredient.id} whiteSpace="pre-wrap">
+												・
+												{scaleIngredientLine({
+													baseServings: recipe.normalizedRecipe?.servings,
+													ingredient,
+													requestedServings,
+												})}
+											</Text>
+										))}
+									</Card.Body>
+								</Card.Root>
+							))}
+					</VStack>
+				) : null}
+
 				{editorPlan.activeVersion ? (
 					<VStack align="stretch" gap="md">
 						<Flex align="center" justify="space-between" gap="sm" wrap="wrap">
@@ -121,6 +159,8 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 								</Button>
 							</NextLink>
 						</Flex>
+
+						<PlanTimeline plan={editorPlan.activeVersion.plan} recipeTitleById={recipeTitleById} />
 
 						{editorPlan.activeVersion.plan.steps.map((step, index) => (
 							<Card.Root key={step.id} variant="outline">

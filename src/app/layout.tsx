@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { cookies } from 'next/headers';
+import 'react-calendar-timeline/style.css';
 import './globals.css';
 import { Box, ColorModeScript, defineConfig, UIProvider } from '@workspaces/ui';
 

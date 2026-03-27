@@ -26,6 +26,9 @@ importers:
       better-auth:
         specifier: ^1.5.4
         version: 1.5.4(0a44029b1011525cab993e09d91aa49f)
+      dayjs:
+        specifier: ^1.11.20
+        version: 1.11.20
       dotenv:
         specifier: ^17.3.1
         version: 17.3.1
@@ -38,12 +41,18 @@ importers:
       htmlparser2:
         specifier: ^12.0.0
         version: 12.0.0
+      interactjs:
+        specifier: ^1.10.27
+        version: 1.10.27
       next:
         specifier: 16.1.6
         version: 16.1.6(@opentelemetry/api@1.9.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       react:
         specifier: 19.2.3
         version: 19.2.3
+      react-calendar-timeline:
+        specifier: 0.30.0-beta.18
+        version: 0.30.0-beta.18(dayjs@1.11.20)(interactjs@1.10.27)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       react-dom:
         specifier: 19.2.3
         version: 19.2.3(react@19.2.3)
@@ -922,6 +931,9 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@interactjs/types@1.10.27':
+    resolution: {integrity: sha512-BUdv0cvs4H5ODuwft2Xp4eL8Vmi3LcihK42z0Ft/FbVJZoRioBsxH+LlsBdK4tAie7PqlKGy+1oyOncu1nQ6eA==}
+
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
 
@@ -1504,6 +1516,9 @@ packages:
   citty@0.2.1:
     resolution: {integrity: sha512-kEV95lFBhQgtogAPlQfJJ0WGVSokvLr/UEoFPiKKOXF7pl98HfUVUD0ejsuTCld/9xH9vogSywZ5KqHzXrZpqg==}
 
+  classnames@2.5.1:
+    resolution: {integrity: sha512-saHYOzhIQs6wy2sVxTM6bUDsQO4F50V9RQ22qBpEdCW+I+/Wmke2HOl6lS6dTpdxVhb88/I6+Hs+438c3lfUow==}
+
   client-only@0.0.1:
     resolution: {integrity: sha512-IV3Ou0jSMzZrd3pZ48nLkT9DA7Ag1pnPzaiQhpW7c3RbcqqzvzzVu+L8gfqMp/8IM2MQtSiqaCxrrcfu8I8rMA==}
 
@@ -1962,6 +1977,9 @@ packages:
     resolution: {integrity: sha512-TR3KfrTZTYLPB6jUjfx6MF9WcWrHL9su5TObK4ZkYgBdWKPOFoSoQIdEuTuR82pmtxH2spWG9h6etwfr1pLBqQ==}
     engines: {node: '>=6'}
 
+  interactjs@1.10.27:
+    resolution: {integrity: sha512-y/8RcCftGAF24gSp76X2JS3XpHiUvDQyhF8i7ujemBz77hwiHDuJzftHx7thY8cxGogwGiPJ+o97kWB6eAXnsA==}
+
   internmap@2.0.3:
     resolution: {integrity: sha512-5Hh7Y1wQbvY5ooGgPbDaL5iYLAPzMTUrjMulskHLH6wnv/A+1q5rgEaiuqEjB+oxGXIVZs1FF+R/KPN3ZSQYYg==}
     engines: {node: '>=12'}
@@ -2128,6 +2146,9 @@ packages:
 
   mdn-data@2.27.1:
     resolution: {integrity: sha512-9Yubnt3e8A0OKwxYSXyhLymGW4sCufcLG6VdiDdUGVkPhpqLxlvP5vl1983gQjJl3tqbrM731mjaZaP68AgosQ==}
+
+  memoize-one@6.0.0:
+    resolution: {integrity: sha512-rkpe71W0N0c0Xz6QD0eJETuWAJGnJ9afsl1srmwPrI+yBCkge5EycXXbYRyvL29zZVUWQCY7InPRCv3GDXuZNw==}
 
   memory-pager@1.5.0:
     resolution: {integrity: sha512-ZS4Bp4r/Zoeq6+NLJpP+0Zzm0pR8whtGPf1XExKLJBAczGMnSi3It14OiNCStjQjM6NU1okjQGSxgEZN8eBYKg==}
@@ -2355,6 +2376,14 @@ packages:
 
   rc9@2.1.2:
     resolution: {integrity: sha512-btXCnMmRIBINM2LDZoEmOogIZU7Qe7zn4BpomSKZ/ykbLObuBdvG+mFq11DL6fjH1DRwHhrlgtYWG96bJiC7Cg==}
+
+  react-calendar-timeline@0.30.0-beta.18:
+    resolution: {integrity: sha512-a20SwKBos5U1HzbNEQ884IcizXmKKSV4LT/V6QDfeA9LvXMES1mdYK06g3zJEQeqOL72ZGJ1G9QfhqSPcQwiSA==}
+    peerDependencies:
+      dayjs: ^1.11.10
+      interactjs: 1.10.27
+      react: ^18 || ^19
+      react-dom: ^18 || ^19
 
   react-clientside-effect@1.2.8:
     resolution: {integrity: sha512-ma2FePH0z3px2+WOu6h+YycZcEvFmmxIlAb62cF52bG86eMySciO/EQZeQMXd07kPCYB0a1dWDT5J+KE9mCDUw==}
@@ -3497,6 +3526,8 @@ snapshots:
   '@img/sharp-win32-x64@0.34.5':
     optional: true
 
+  '@interactjs/types@1.10.27': {}
+
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
@@ -4035,6 +4066,8 @@ snapshots:
 
   citty@0.2.1: {}
 
+  classnames@2.5.1: {}
+
   client-only@0.0.1: {}
 
   clsx@2.1.1: {}
@@ -4424,6 +4457,10 @@ snapshots:
       parent-module: 1.0.1
       resolve-from: 4.0.0
 
+  interactjs@1.10.27:
+    dependencies:
+      '@interactjs/types': 1.10.27
+
   internmap@2.0.3: {}
 
   intl-messageformat@11.2.0:
@@ -4561,6 +4598,8 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.5
 
   mdn-data@2.27.1: {}
+
+  memoize-one@6.0.0: {}
 
   memory-pager@1.5.0: {}
 
@@ -4767,6 +4806,16 @@ snapshots:
     dependencies:
       defu: 6.1.4
       destr: 2.0.5
+
+  react-calendar-timeline@0.30.0-beta.18(dayjs@1.11.20)(interactjs@1.10.27)(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
+    dependencies:
+      classnames: 2.5.1
+      dayjs: 1.11.20
+      interactjs: 1.10.27
+      lodash: 4.17.21
+      memoize-one: 6.0.0
+      react: 19.2.3
+      react-dom: 19.2.3(react@19.2.3)
 
   react-clientside-effect@1.2.8(react@19.2.3):
     dependencies:

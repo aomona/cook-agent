@@ -42,6 +42,8 @@ export const summarizeRecipeSource = async ({
 			'Do not invent missing facts.',
 			'Prefer concise Japanese output.',
 			'When servings are unknown, set servingsText to null.',
+			'If servings are ambiguous, conflicting, or only weakly implied, set servingsText to null instead of guessing.',
+			'When servings are missing or ambiguous, the product will ask the user to enter them manually.',
 			'Always include ingredientsText and instructionsText.',
 			'If ingredients or steps are unclear, return an empty array instead of guessing.',
 		].join(' '),

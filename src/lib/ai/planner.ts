@@ -5,7 +5,7 @@ import { Output, stepCountIs, ToolLoopAgent, tool } from 'ai';
 import { z } from 'zod';
 import { getRequiredEnv } from '@/lib/env';
 import { planDocumentSchema } from '@/lib/plans/schema';
-import type { PlanDocument, PlanGenerationInput } from '@/lib/plans/types';
+import type { PlanDocument, PlanGenerationInput, PlanImprovementInput } from '@/lib/plans/types';
 
 const openai = createOpenAI({
 	apiKey: getRequiredEnv('OPENAI_API_KEY'),
@@ -19,64 +19,57 @@ const plannerOutputSchema = z.object({
 	servings: z.number().int().positive().max(100),
 	steps: z
 		.array(
-			z
-				.object({
-					id: z.string().trim().min(1).max(100),
-					title: z.string().trim().min(1).max(120),
-					description: z.string().trim().min(1).max(600),
-					dependencies: z.array(z.string().trim().min(1).max(100)).max(20),
-					estimatedMinutes: z
-						.number()
-						.int()
-						.positive()
-						.max(24 * 60),
-					canParallelize: z.boolean(),
-					recipeSourceId: z.string().uuid().nullable(),
-					notesForUser: z.array(z.string().trim().min(1).max(200)).max(10).nullable(),
-					recoveryTips: z.array(z.string().trim().min(1).max(200)).max(10).nullable(),
-					ingredients: z
-						.array(
-							z
-								.object({
-									ingredientId: z.string().trim().min(1).max(120),
-									preparation: z.string().trim().min(1).max(120).nullable(),
-									quantity: z.string().trim().min(1).max(120).nullable(),
-								})
-								.strict(),
-						)
-						.max(20)
-						.nullable(),
-					outputs: z.array(z.string().trim().min(1).max(120)).max(10).nullable(),
-					timers: z
-						.array(
-							z
-								.object({
-									id: z.string().trim().min(1).max(100),
-									label: z.string().trim().min(1).max(120),
-									seconds: z
-										.number()
-										.int()
-										.positive()
-										.max(60 * 60 * 12),
-									autoStart: z.boolean().nullable(),
-								})
-								.strict(),
-						)
-						.max(5)
-						.nullable(),
-					tags: z.array(z.string().trim().min(1).max(40)).max(10).nullable(),
-				})
-				.strict(),
+			z.object({
+				id: z.string().trim().min(1).max(100),
+				title: z.string().trim().min(1).max(120),
+				description: z.string().trim().min(1).max(600),
+				dependencies: z.array(z.string().trim().min(1).max(100)).max(20),
+				estimatedMinutes: z
+					.number()
+					.int()
+					.positive()
+					.max(24 * 60),
+				canParallelize: z.boolean(),
+				recipeSourceId: z.string().uuid().nullable(),
+				notesForUser: z.array(z.string().trim().min(1).max(200)).max(10).nullable(),
+				recoveryTips: z.array(z.string().trim().min(1).max(200)).max(10).nullable(),
+				ingredients: z
+					.array(
+						z.strictObject({
+							ingredientId: z.string().trim().min(1).max(120),
+							preparation: z.string().trim().min(1).max(120).nullable(),
+							quantity: z.string().trim().min(1).max(120).nullable(),
+						}),
+					)
+					.max(20)
+					.nullable(),
+				outputs: z.array(z.string().trim().min(1).max(120)).max(10).nullable(),
+				timers: z
+					.array(
+						z.strictObject({
+							id: z.string().trim().min(1).max(100),
+							label: z.string().trim().min(1).max(120),
+							seconds: z
+								.number()
+								.int()
+								.positive()
+								.max(60 * 60 * 12),
+							autoStart: z.boolean().nullable(),
+						}),
+					)
+					.max(5)
+					.nullable(),
+				tags: z.array(z.string().trim().min(1).max(40)).max(10).nullable(),
+			}),
 		)
 		.min(1)
 		.max(60),
 	metadata: z
-		.object({
+		.strictObject({
 			availableEquipment: z.array(z.string().trim().min(1).max(80)).max(30),
 			constraints: z.array(z.string().trim().min(1).max(160)).max(30),
 			recipeSourceIds: z.array(z.string().uuid()).max(20),
 		})
-		.strict()
 		.nullable(),
 });
 
@@ -221,7 +214,7 @@ const assertSafeUrl = async (value: string): Promise<URL> => {
 	return url;
 };
 
-const postTavily = async <TSchema extends z.ZodTypeAny>({
+const postTavily = async <TSchema extends z.ZodType>({
 	path,
 	body,
 	schema,
@@ -328,6 +321,7 @@ const buildPrompt = (input: PlanGenerationInput): string =>
 		'Use web_search to look up missing cooking knowledge, safety guidance, or equipment-specific technique.',
 		'Use fetch_url to inspect a specific source after search, or to re-read a recipe sourceUrl already present in the input.',
 		'Prefer conservative safe assumptions over unnecessary searching or fetching.',
+		'If a recipe serving count is missing or ambiguous, do not infer it from weak clues; rely on explicit user input in the provided planning context.',
 		'Respect available equipment and listed constraints. Never assume unavailable equipment.',
 		'Important rules:',
 		'- Output must be JSON only.',
@@ -344,6 +338,7 @@ const buildPrompt = (input: PlanGenerationInput): string =>
 		'- Put safety-critical guidance in notesForUser or recoveryTips.',
 		'- The goal is completing the meal, not writing polished prose.',
 		'- If information is missing, choose the most conservative safe assumption.',
+		'- If servings information is missing or ambiguous, treat the user-provided requestedServings and any explicit per-recipe servings in the input as the only trusted serving counts.',
 		'Planning policy:',
 		'- Think through the full meal flow before writing steps.',
 		'- Break long prep, heating, and finishing work into smaller executable units.',
@@ -364,12 +359,71 @@ const buildPrompt = (input: PlanGenerationInput): string =>
 		JSON.stringify(input, null, 2),
 	].join('\n');
 
+const buildImprovementPrompt = ({
+	currentPlan,
+	improvementRequest,
+	plannerInput,
+}: PlanImprovementInput): string =>
+	[
+		'Revise an existing structured cooking execution plan for a prototype cooking agent.',
+		'Keep the plan practical in a real kitchen and optimize for all dishes finishing together.',
+		'Preserve good parts of the current plan and only change what is needed to satisfy the improvement request.',
+		'First reconsider the full workflow, then update prep, heating, and assembly balance as needed.',
+		'Use the provided normalized recipes as the primary source of truth.',
+		'Use web tools sparingly and only when the recipe data and current plan are insufficient.',
+		'Use web_search to look up missing cooking knowledge, safety guidance, or equipment-specific technique.',
+		'Use fetch_url to inspect a specific source after search, or to re-read a recipe sourceUrl already present in the input.',
+		'Prefer conservative safe assumptions over unnecessary searching or fetching.',
+		'If a recipe serving count is missing or ambiguous, do not infer it from weak clues; rely on explicit user input in the provided planning context.',
+		'Respect available equipment and listed constraints. Never assume unavailable equipment.',
+		'Important rules:',
+		'- Output must be JSON only.',
+		'- Do not output explanations or Markdown.',
+		'- Follow the provided schema strictly.',
+		'- Do not copy recipe instructions verbatim; decompose them into executable kitchen tasks.',
+		'- Keep existing step IDs when a step remains substantially the same.',
+		'- Use new step IDs only for newly introduced steps.',
+		'- Remove obsolete steps instead of leaving dead branches.',
+		'- Do not omit fields required by the schema; use null when a nullable field has no value.',
+		'- Use canParallelize=true for work that can proceed in parallel without violating dependencies.',
+		'- Express all ordering constraints explicitly in dependencies.',
+		'- Put safety-critical guidance in notesForUser or recoveryTips.',
+		'- The goal is completing the meal, not writing polished prose.',
+		'- If information is missing, choose the most conservative safe assumption.',
+		'- If servings information is missing or ambiguous, treat the user-provided requestedServings and any explicit per-recipe servings in the input as the only trusted serving counts.',
+		'Planning policy:',
+		'- Think through the full meal flow before writing steps.',
+		'- Break long prep, heating, and finishing work into smaller executable units.',
+		'- Reduce idle time by parallelizing safe work.',
+		'- Fill waiting time with other work when possible.',
+		'- Avoid overloading the final minutes before serving.',
+		'- Add timers wherever they materially help execution.',
+		'Field guidance:',
+		'- Use exactly these JSON field names: version, title, servings, steps, id, title, description, dependencies, estimatedMinutes, canParallelize, recipeSourceId, notesForUser, recoveryTips, ingredients, outputs, timers, tags, metadata.',
+		'- dependencies must contain only earlier step IDs.',
+		'- canParallelize should be false unless the step can truly overlap with other pending work.',
+		'- When you reference ingredients in a step, use ingredient IDs from the corresponding recipe.',
+		'- Use recipeSourceId whenever a step clearly comes from one recipe.',
+		'- Timer durations must be in seconds.',
+		'- For nullable fields with no value, return null instead of omitting the key.',
+		'- metadata should be either null or an object with availableEquipment, constraints, and recipeSourceIds.',
+		'',
+		'Improvement request:',
+		improvementRequest,
+		'',
+		'Current plan JSON:',
+		JSON.stringify(currentPlan, null, 2),
+		'',
+		'Planning context JSON:',
+		JSON.stringify(plannerInput, null, 2),
+	].join('\n');
+
 export type PlannerStreamEvent =
 	| { type: 'status'; message: string }
 	| { type: 'reasoning'; delta: string }
 	| { type: 'tool'; message: string };
 
-const createPlannerAgent = (_input: PlanGenerationInput) =>
+const createPlannerAgent = () =>
 	new ToolLoopAgent({
 		model: openai('gpt-5.4-mini'),
 		maxOutputTokens: 100000,
@@ -403,7 +457,7 @@ const createPlannerAgent = (_input: PlanGenerationInput) =>
 	});
 
 export const generateCookingPlan = async (input: PlanGenerationInput): Promise<PlanDocument> => {
-	const plannerAgent = createPlannerAgent(input);
+	const plannerAgent = createPlannerAgent();
 
 	const result = await plannerAgent.generate({
 		prompt: buildPrompt(input),
@@ -421,10 +475,80 @@ export const streamCookingPlan = async ({
 	onEvent?: (event: PlannerStreamEvent) => Promise<void> | void;
 	abortSignal?: AbortSignal;
 }): Promise<PlanDocument> => {
-	const plannerAgent = createPlannerAgent(input);
+	const plannerAgent = createPlannerAgent();
 	const result = await plannerAgent.stream({
 		abortSignal,
 		prompt: buildPrompt(input),
+	});
+
+	for await (const part of result.fullStream) {
+		if (part.type === 'start-step') {
+			await onEvent?.({
+				type: 'status',
+				message: '次の推論ステップを開始しました。',
+			});
+			continue;
+		}
+
+		if (part.type === 'reasoning-delta') {
+			await onEvent?.({
+				type: 'reasoning',
+				delta: part.text,
+			});
+			continue;
+		}
+
+		if (part.type === 'tool-input-start') {
+			await onEvent?.({
+				type: 'tool',
+				message: `補助ツールを実行中: ${part.toolName}`,
+			});
+			continue;
+		}
+
+		if (part.type === 'tool-result') {
+			await onEvent?.({
+				type: 'tool',
+				message: `補助ツールが完了: ${part.toolName}`,
+			});
+			continue;
+		}
+
+		if (part.type === 'finish-step') {
+			await onEvent?.({
+				type: 'status',
+				message: `推論ステップ完了: ${part.finishReason}`,
+			});
+		}
+	}
+
+	const planDocument = await result.output;
+
+	return planDocumentSchema.parse(planDocument);
+};
+
+export const improveCookingPlan = async (input: PlanImprovementInput): Promise<PlanDocument> => {
+	const plannerAgent = createPlannerAgent();
+	const result = await plannerAgent.generate({
+		prompt: buildImprovementPrompt(input),
+	});
+
+	return planDocumentSchema.parse(result.output);
+};
+
+export const streamImproveCookingPlan = async ({
+	input,
+	onEvent,
+	abortSignal,
+}: {
+	input: PlanImprovementInput;
+	onEvent?: (event: PlannerStreamEvent) => Promise<void> | void;
+	abortSignal?: AbortSignal;
+}): Promise<PlanDocument> => {
+	const plannerAgent = createPlannerAgent();
+	const result = await plannerAgent.stream({
+		abortSignal,
+		prompt: buildImprovementPrompt(input),
 	});
 
 	for await (const part of result.fullStream) {

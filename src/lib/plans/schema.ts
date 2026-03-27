@@ -7,10 +7,10 @@ import type {
 	PlanTimer,
 } from '@/lib/plans/types';
 
-const nullableOptional = <TSchema extends z.ZodTypeAny>(schema: TSchema) =>
+const nullableOptional = <TSchema extends z.ZodType>(schema: TSchema) =>
 	z.preprocess((value) => (value === null ? undefined : value), schema.optional());
 
-export const planTimerSchema: z.ZodType<PlanTimer> = z.object({
+export const planTimerSchema = z.object({
 	id: z.string().trim().min(1).max(100),
 	label: z.string().trim().min(1).max(120),
 	seconds: z
@@ -19,15 +19,15 @@ export const planTimerSchema: z.ZodType<PlanTimer> = z.object({
 		.positive()
 		.max(60 * 60 * 12),
 	autoStart: nullableOptional(z.boolean()),
-});
+}) satisfies z.ZodType<PlanTimer>;
 
-export const planStepIngredientRefSchema: z.ZodType<PlanStepIngredientRef> = z.object({
+export const planStepIngredientRefSchema = z.object({
 	ingredientId: z.string().trim().min(1).max(120),
 	preparation: nullableOptional(z.string().trim().min(1).max(120)),
 	quantity: nullableOptional(z.string().trim().min(1).max(120)),
-});
+}) satisfies z.ZodType<PlanStepIngredientRef>;
 
-export const planStepSchema: z.ZodType<PlanStep> = z.object({
+export const planStepSchema = z.object({
 	id: z.string().trim().min(1).max(100),
 	title: z.string().trim().min(1).max(120),
 	description: z.string().trim().min(1).max(600),
@@ -45,18 +45,18 @@ export const planStepSchema: z.ZodType<PlanStep> = z.object({
 	outputs: nullableOptional(z.array(z.string().trim().min(1).max(120)).max(10)),
 	timers: nullableOptional(z.array(planTimerSchema).max(5)),
 	tags: nullableOptional(z.array(z.string().trim().min(1).max(40)).max(10)),
-});
+}) satisfies z.ZodType<PlanStep>;
 
-export const planDocumentSchema: z.ZodType<PlanDocument> = z.object({
+export const planDocumentSchema = z.object({
 	version: z.literal(1),
 	title: z.string().trim().min(1).max(160),
 	servings: z.number().int().positive().max(100),
 	steps: z.array(planStepSchema).min(1).max(60),
 	metadata: nullableOptional(z.record(z.string(), z.unknown())),
-});
+}) satisfies z.ZodType<PlanDocument>;
 
-export const planGenerationOptionsSchema: z.ZodType<PlanGenerationOptions> = z.object({
+export const planGenerationOptionsSchema = z.object({
 	requestedServings: z.number().int().min(1).max(24),
 	availableEquipment: z.array(z.string().trim().min(1).max(80)).max(30),
 	constraints: z.array(z.string().trim().min(1).max(160)).max(30),
-});
+}) satisfies z.ZodType<PlanGenerationOptions>;

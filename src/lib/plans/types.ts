@@ -64,6 +64,12 @@ export type PlanGenerationInput = {
 	recipes: PlanGenerationRecipeInput[];
 };
 
+export type PlanImprovementInput = {
+	plannerInput: PlanGenerationInput;
+	currentPlan: PlanDocument;
+	improvementRequest: string;
+};
+
 export type PlanTimer = {
 	id: string;
 	label: string;

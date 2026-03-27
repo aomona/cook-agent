@@ -18,6 +18,8 @@ import {
 } from '@workspaces/ui';
 import { useRouter } from 'next/navigation';
 import { useMemo, useRef, useState } from 'react';
+import { PlanTimeline } from '@/components/plan-timeline';
+import { scaleIngredientLine } from '@/lib/plans/presentation';
 import type { PlanEditorData } from '@/lib/plans/queries';
 import type { PlanDocument } from '@/lib/plans/types';
 
@@ -31,7 +33,7 @@ const getErrorMessage = (error: unknown): string => {
 		return error.message;
 	}
 
-	return '工程の生成に失敗しました。';
+	return '工程の更新に失敗しました。';
 };
 
 const parseLines = (value: string): string[] =>
@@ -155,6 +157,10 @@ export const PlanPageClient = ({ initialPlan }: { initialPlan: PlanEditorData })
 	const [generatedPlan, setGeneratedPlan] = useState<PlanDocument | null>(
 		initialPlan.activeVersion?.plan ?? null,
 	);
+	const [currentVersionNumber, setCurrentVersionNumber] = useState<number | null>(
+		initialPlan.activeVersion?.versionNumber ?? null,
+	);
+	const [improvementRequest, setImprovementRequest] = useState('');
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
 	const [reasoningText, setReasoningText] = useState('');
@@ -165,7 +171,7 @@ export const PlanPageClient = ({ initialPlan }: { initialPlan: PlanEditorData })
 
 	const recipeTitleById = useMemo(
 		() =>
-			new Map(
+			Object.fromEntries(
 				initialPlan.recipes.map((recipe) => [
 					recipe.id,
 					recipe.title ?? recipe.normalizedRecipe?.title ?? recipe.label,
@@ -173,41 +179,60 @@ export const PlanPageClient = ({ initialPlan }: { initialPlan: PlanEditorData })
 			),
 		[initialPlan.recipes],
 	);
+	const recipeIngredients = useMemo(
+		() =>
+			(generatedPlan
+				? initialPlan.recipes.filter((recipe) => recipe.normalizedRecipe?.ingredients.length)
+				: []
+			).map((recipe) => ({
+				baseServings: recipe.normalizedRecipe?.servings,
+				id: recipe.id,
+				ingredients: recipe.normalizedRecipe?.ingredients ?? [],
+				requestedServings: generatedPlan?.servings ?? getDefaultServings(initialPlan),
+				title: recipe.title ?? recipe.normalizedRecipe?.title ?? recipe.label,
+			})),
+		[generatedPlan, initialPlan],
+	);
 
-	const handleGenerate = async (): Promise<void> => {
-		const parsedServings = Number.parseInt(requestedServings, 10);
-
-		if (Number.isNaN(parsedServings) || parsedServings < 1) {
-			notice({
-				description: '1 以上の人数を入力してください。',
-				status: 'error',
-				title: '入力エラー',
-			});
-			return;
-		}
-
+	const runPlannerStream = async ({
+		body,
+		completeLog,
+		completeTitle,
+		errorTitle,
+		progressTitle,
+		startLog,
+		successDescription,
+		successTitle,
+		url,
+	}: {
+		url: string;
+		body: Record<string, unknown>;
+		startLog: string;
+		progressTitle: string;
+		completeTitle: string;
+		completeLog: string;
+		successTitle: string;
+		successDescription: string;
+		errorTitle: string;
+	}): Promise<void> => {
 		setIsGenerating(true);
 		setIsProgressModalOpen(true);
 		setReasoningText('');
-		setProgressLogs(['生成を開始しました。']);
-		setProgressTitle('工程を生成しています');
+		setProgressLogs([startLog]);
+		setProgressTitle(progressTitle);
 
 		try {
-			const response = await fetch(`/api/plans/${initialPlan.id}/generate/stream`, {
+			const response = await fetch(url, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify({
-					requestedServings: parsedServings,
-					availableEquipment: parseLines(availableEquipment),
-					constraints: parseLines(constraints),
-				}),
+				body: JSON.stringify(body),
 			});
 
 			if (!response.ok) {
 				const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-				throw new Error(payload?.message ?? '工程の生成に失敗しました。');
+				throw new Error(payload?.message ?? '工程の更新に失敗しました。');
 			}
 
 			let receivedPlan = false;
@@ -233,15 +258,19 @@ export const PlanPageClient = ({ initialPlan }: { initialPlan: PlanEditorData })
 
 					if (event === 'error') {
 						const data = payload as { message?: string };
-						throw new Error(data.message ?? '工程の生成に失敗しました。');
+						throw new Error(data.message ?? '工程の更新に失敗しました。');
 					}
 
 					if (event === 'result') {
-						const data = payload as { plan: PlanDocument };
+						const data = payload as {
+							plan: PlanDocument;
+							version?: { versionNumber?: number };
+						};
 						receivedPlan = true;
 						setGeneratedPlan(data.plan);
-						setProgressLogs((currentLogs) => appendLog(currentLogs, '工程の生成が完了しました。'));
-						setProgressTitle('工程の生成が完了しました');
+						setCurrentVersionNumber(data.version?.versionNumber ?? null);
+						setProgressLogs((currentLogs) => appendLog(currentLogs, completeLog));
+						setProgressTitle(completeTitle);
 						scrollIntoViewOnNextFrame(statusEndRef.current);
 					}
 				},
@@ -249,26 +278,104 @@ export const PlanPageClient = ({ initialPlan }: { initialPlan: PlanEditorData })
 			});
 
 			if (!receivedPlan) {
-				throw new Error('工程の生成結果を受信できませんでした。');
+				throw new Error('工程の更新結果を受信できませんでした。');
 			}
 
 			router.refresh();
 			notice({
-				description: 'AI が工程を構成しました。',
+				description: successDescription,
 				status: 'success',
-				title: '生成完了',
+				title: successTitle,
 			});
 		} catch (error) {
-			setProgressTitle('工程の生成に失敗しました');
+			setProgressTitle(errorTitle);
 			setProgressLogs((currentLogs) => appendLog(currentLogs, getErrorMessage(error)));
 			notice({
 				description: getErrorMessage(error),
 				status: 'error',
-				title: '生成失敗',
+				title: errorTitle,
 			});
 		} finally {
 			setIsGenerating(false);
 		}
+	};
+
+	const handleGenerate = async (): Promise<void> => {
+		const parsedServings = Number.parseInt(requestedServings, 10);
+
+		if (Number.isNaN(parsedServings) || parsedServings < 1) {
+			notice({
+				description: '1 以上の人数を入力してください。',
+				status: 'error',
+				title: '入力エラー',
+			});
+			return;
+		}
+
+		await runPlannerStream({
+			body: {
+				requestedServings: parsedServings,
+				availableEquipment: parseLines(availableEquipment),
+				constraints: parseLines(constraints),
+			},
+			completeLog: '工程の生成が完了しました。',
+			completeTitle: '工程の生成が完了しました',
+			errorTitle: '生成失敗',
+			progressTitle: '工程を生成しています',
+			startLog: '生成を開始しました。',
+			successDescription: 'AI が工程を構成しました。',
+			successTitle: '生成完了',
+			url: `/api/plans/${initialPlan.id}/generate/stream`,
+		});
+	};
+
+	const handleImprove = async (): Promise<void> => {
+		const parsedServings = Number.parseInt(requestedServings, 10);
+
+		if (!generatedPlan) {
+			notice({
+				description: '先に工程を生成してください。',
+				status: 'error',
+				title: '改善できません',
+			});
+			return;
+		}
+
+		if (Number.isNaN(parsedServings) || parsedServings < 1) {
+			notice({
+				description: '1 以上の人数を入力してください。',
+				status: 'error',
+				title: '入力エラー',
+			});
+			return;
+		}
+
+		if (!improvementRequest.trim()) {
+			notice({
+				description: '改善したい点を入力してください。',
+				status: 'error',
+				title: '入力エラー',
+			});
+			return;
+		}
+
+		await runPlannerStream({
+			body: {
+				requestedServings: parsedServings,
+				availableEquipment: parseLines(availableEquipment),
+				constraints: parseLines(constraints),
+				currentPlan: generatedPlan,
+				improvementRequest: improvementRequest.trim(),
+			},
+			completeLog: '工程の改善が完了しました。',
+			completeTitle: '工程の改善が完了しました',
+			errorTitle: '改善失敗',
+			progressTitle: '工程を改善しています',
+			startLog: '改善を開始しました。',
+			successDescription: 'AI が工程を改善しました。',
+			successTitle: '改善完了',
+			url: `/api/plans/${initialPlan.id}/improve/stream`,
+		});
 	};
 
 	return (
@@ -419,6 +526,33 @@ export const PlanPageClient = ({ initialPlan }: { initialPlan: PlanEditorData })
 					</For>
 				</VStack>
 
+				{recipeIngredients.length ? (
+					<VStack align="stretch" gap="md">
+						<Heading size="md">材料一覧</Heading>
+						<For each={recipeIngredients}>
+							{(recipe) => (
+								<Card.Root key={recipe.id} variant="outline">
+									<Card.Body gap="sm">
+										<Heading size="sm">{recipe.title}</Heading>
+										<For each={recipe.ingredients}>
+											{(ingredient) => (
+												<Text key={ingredient.id} whiteSpace="pre-wrap">
+													・
+													{scaleIngredientLine({
+														baseServings: recipe.baseServings,
+														ingredient,
+														requestedServings: recipe.requestedServings,
+													})}
+												</Text>
+											)}
+										</For>
+									</Card.Body>
+								</Card.Root>
+							)}
+						</For>
+					</VStack>
+				) : null}
+
 				{generatedPlan ? (
 					<VStack align="stretch" gap="md">
 						<Flex align="center" justify="space-between" wrap="wrap" gap="sm">
@@ -428,12 +562,14 @@ export const PlanPageClient = ({ initialPlan }: { initialPlan: PlanEditorData })
 									{generatedPlan.servings}人分 / {generatedPlan.steps.length} ステップ
 								</Text>
 							</VStack>
-							{initialPlan.activeVersion ? (
+							{currentVersionNumber ? (
 								<Badge colorScheme="green" variant="subtle">
-									v{initialPlan.activeVersion.versionNumber}
+									v{currentVersionNumber}
 								</Badge>
 							) : null}
 						</Flex>
+
+						<PlanTimeline plan={generatedPlan} recipeTitleById={recipeTitleById} />
 
 						<For each={generatedPlan.steps}>
 							{(step, index) => (
@@ -455,7 +591,7 @@ export const PlanPageClient = ({ initialPlan }: { initialPlan: PlanEditorData })
 
 										{step.recipeSourceId ? (
 											<Text color="fg.subtle" fontSize="sm">
-												元レシピ: {recipeTitleById.get(step.recipeSourceId) ?? step.recipeSourceId}
+												元レシピ: {recipeTitleById[step.recipeSourceId] ?? step.recipeSourceId}
 											</Text>
 										) : null}
 
@@ -491,6 +627,35 @@ export const PlanPageClient = ({ initialPlan }: { initialPlan: PlanEditorData })
 							)}
 						</For>
 					</VStack>
+				) : null}
+
+				{generatedPlan ? (
+					<Card.Root variant="outline">
+						<Card.Body gap="md">
+							<VStack align="stretch" gap="xs">
+								<Heading size="md">工程を改善する</Heading>
+								<Text color="fg.subtle">
+									今の工程を見た上で、改善したい点を自然文で入力できます。
+								</Text>
+							</VStack>
+
+							<Textarea
+								autosize
+								minH="10rem"
+								placeholder={
+									'例:\n・洗い物を減らしたい\n・盛り付け直前の作業を減らしたい\n・フライパンを1つしか使わない構成にしたい'
+								}
+								value={improvementRequest}
+								onChange={(event) => setImprovementRequest(event.target.value)}
+							/>
+
+							<Flex justify="end">
+								<Button loading={isGenerating} onClick={() => void handleImprove()}>
+									この工程を改善する
+								</Button>
+							</Flex>
+						</Card.Body>
+					</Card.Root>
 				) : null}
 			</VStack>
 		</>

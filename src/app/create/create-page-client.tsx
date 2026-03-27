@@ -38,7 +38,10 @@ const isPendingRecipe = (recipe: CreateRecipeItem): boolean =>
 	pendingStatuses.has(recipe.processingStatus);
 
 const getCanProceed = (recipes: CreateRecipeItem[]): boolean =>
-	recipes.length > 0 && recipes.every((recipe) => recipe.processingStatus === 'completed');
+	recipes.length > 0 &&
+	recipes.every(
+		(recipe) => recipe.processingStatus === 'completed' && !recipe.requiresServingsInput,
+	);
 
 const RecipeStatus = ({
 	recipe,
@@ -79,6 +82,16 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 	const [textValue, setTextValue] = useState('');
 	const [plan, setPlan] = useState<CreatePlanData>(initialPlan);
 	const [deletingRecipeIds, setDeletingRecipeIds] = useState<string[]>([]);
+	const [servingsInputByRecipeId, setServingsInputByRecipeId] = useState<Record<string, string>>(
+		() =>
+			Object.fromEntries(
+				initialPlan.recipes.map((recipe) => [
+					recipe.id,
+					recipe.normalizedServings?.toString() ?? '',
+				]),
+			),
+	);
+	const [savingServingsRecipeIds, setSavingServingsRecipeIds] = useState<string[]>([]);
 	const processingRecipeIdsRef = useRef<Set<string>>(new Set());
 	const scheduledRecipeIdsRef = useRef<Set<string>>(new Set());
 	const notice = useNotice();
@@ -102,6 +115,14 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 
 		const payload = (await response.json()) as { plan: CreatePlanData };
 		setPlan(payload.plan);
+		setServingsInputByRecipeId(
+			Object.fromEntries(
+				payload.plan.recipes.map((recipe) => [
+					recipe.id,
+					recipe.normalizedServings?.toString() ?? '',
+				]),
+			),
+		);
 	}, [plan.id]);
 
 	const queueRecipeProcessing = useCallback(async (recipeId: string): Promise<void> => {
@@ -161,8 +182,10 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 			label: value,
 			title: null,
 			summary: null,
+			normalizedServings: null,
 			processingStatus: 'queued',
 			processingError: null,
+			requiresServingsInput: false,
 			createdAt: new Date().toISOString(),
 			updatedAt: new Date().toISOString(),
 		};
@@ -214,8 +237,10 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 					recipe.id === optimisticRecipe.id
 						? {
 								...recipe,
+								normalizedServings: null,
 								processingStatus: 'failed',
 								processingError: getErrorMessage(error),
+								requiresServingsInput: false,
 							}
 						: recipe,
 				),
@@ -239,6 +264,67 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 		}));
 
 		void queueRecipeProcessing(recipeId);
+	};
+
+	const handleUpdateServings = async (recipeId: string): Promise<void> => {
+		const rawValue = servingsInputByRecipeId[recipeId]?.trim() ?? '';
+		const servings = Number.parseInt(rawValue, 10);
+
+		if (Number.isNaN(servings) || servings < 1) {
+			notice({
+				description: '1 以上の人数を入力してください。',
+				status: 'error',
+				title: '入力エラー',
+			});
+			return;
+		}
+
+		setSavingServingsRecipeIds((currentIds) => [...currentIds, recipeId]);
+
+		try {
+			const response = await fetch(`/api/plans/${plan.id}/recipes/${recipeId}`, {
+				method: 'PATCH',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					servings,
+				}),
+			});
+
+			if (!response.ok) {
+				const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+				throw new Error(payload?.message ?? '人数の保存に失敗しました。');
+			}
+
+			const payload = (await response.json()) as { recipe: CreateRecipeItem };
+
+			setPlan((currentPlan) => {
+				const nextRecipes = currentPlan.recipes.map((recipe) =>
+					recipe.id === recipeId ? payload.recipe : recipe,
+				);
+
+				return {
+					...currentPlan,
+					canProceed: getCanProceed(nextRecipes),
+					recipes: nextRecipes,
+				};
+			});
+			setServingsInputByRecipeId((currentMap) => ({
+				...currentMap,
+				[recipeId]: payload.recipe.normalizedServings?.toString() ?? '',
+			}));
+		} catch (error) {
+			notice({
+				description: getErrorMessage(error),
+				status: 'error',
+				title: '人数を保存できませんでした',
+			});
+		} finally {
+			setSavingServingsRecipeIds((currentIds) =>
+				currentIds.filter((currentId) => currentId !== recipeId),
+			);
+		}
 	};
 
 	const handleDeleteRecipe = async (recipeId: string): Promise<void> => {
@@ -337,6 +423,40 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 
 									{recipe.summary ? <Text whiteSpace="pre-wrap">{recipe.summary}</Text> : null}
 
+									{recipe.processingStatus === 'completed' && recipe.requiresServingsInput ? (
+										<Card.Root bg="bg.subtle" variant="outline">
+											<Card.Body gap="sm">
+												<Text fontWeight="medium">このレシピの元人数を入力してください</Text>
+												<Text color="fg.subtle" fontSize="sm">
+													材料換算に使うので、レシピ本文の元人数を入れてください。
+												</Text>
+												<Flex
+													align={{ base: 'stretch', md: 'end' }}
+													direction={{ base: 'column', md: 'row' }}
+													gap="sm"
+												>
+													<Input
+														min={1}
+														type="number"
+														value={servingsInputByRecipeId[recipe.id] ?? ''}
+														onChange={(event) =>
+															setServingsInputByRecipeId((currentMap) => ({
+																...currentMap,
+																[recipe.id]: event.target.value,
+															}))
+														}
+													/>
+													<Button
+														loading={savingServingsRecipeIds.includes(recipe.id)}
+														onClick={() => void handleUpdateServings(recipe.id)}
+													>
+														保存
+													</Button>
+												</Flex>
+											</Card.Body>
+										</Card.Root>
+									) : null}
+
 									{recipe.processingError ? (
 										<Text color="danger">{recipe.processingError}</Text>
 									) : null}
@@ -367,7 +487,7 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 							</Button>
 						)}
 						<Text color="fg.subtle" fontSize="sm">
-							抽出完了後に plan へ進めます。
+							抽出完了と、人数不明レシピの入力後に plan へ進めます。
 						</Text>
 					</VStack>
 				</Flex>

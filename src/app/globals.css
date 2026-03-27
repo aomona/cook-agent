@@ -14,3 +14,39 @@ body {
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 }
+
+.plan-timeline {
+	min-width: 56rem;
+}
+
+.plan-timeline .react-calendar-timeline {
+	border: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+	border-radius: 18px;
+	overflow: hidden;
+}
+
+.plan-timeline .rct-sidebar {
+	background: color-mix(in srgb, currentColor 4%, white);
+	border-right: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.plan-timeline .rct-sidebar .rct-sidebar-row {
+	border-bottom: 1px solid color-mix(in srgb, currentColor 8%, transparent);
+	font-weight: 600;
+}
+
+.plan-timeline .rct-header-root {
+	background: color-mix(in srgb, currentColor 3%, white);
+	border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.plan-timeline .rct-vertical-lines .rct-vl,
+.plan-timeline .rct-horizontal-lines .rct-hl-even,
+.plan-timeline .rct-horizontal-lines .rct-hl-odd {
+	border-color: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.plan-timeline .rct-dateHeader {
+	color: inherit;
+	font-weight: 600;
+}
