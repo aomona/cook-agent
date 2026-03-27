@@ -2,6 +2,40 @@ import { Badge, Card, Flex, Heading, Text, VStack } from '@workspaces/ui';
 import { isCleanupPlanStep } from '@/lib/plans/step-tags';
 import type { PlanDocument } from '@/lib/plans/types';
 
+const getKindLabel = (kind: PlanDocument['steps'][number]['kind']): string => {
+	switch (kind) {
+		case 'cleanup':
+			return '洗い物';
+		case 'cook':
+			return '加熱';
+		case 'finish':
+			return '仕上げ';
+		case 'prep':
+			return '下準備';
+		case 'wait':
+			return '待機';
+		default:
+			return kind;
+	}
+};
+
+const getKindColorScheme = (kind: PlanDocument['steps'][number]['kind']): string => {
+	switch (kind) {
+		case 'cleanup':
+			return 'amber';
+		case 'cook':
+			return 'blue';
+		case 'finish':
+			return 'purple';
+		case 'prep':
+			return 'green';
+		case 'wait':
+			return 'teal';
+		default:
+			return 'blackAlpha';
+	}
+};
+
 export const PlanStepCards = ({
 	plan,
 	recipeTitleById,
@@ -14,8 +48,16 @@ export const PlanStepCards = ({
 	showRecipeSource?: boolean;
 	showTimers?: boolean;
 	useDurationBadge?: boolean;
-}) =>
-	plan.steps.map((step, index) => {
+}) => {
+	const stepLabelById = Object.fromEntries(plan.steps.map((step) => [step.id, step.label]));
+	const materialLabelById = Object.fromEntries(
+		plan.materials.map((material) => [
+			material.id,
+			material.amount ? `${material.name} (${material.amount})` : material.name,
+		]),
+	);
+
+	return plan.steps.map((step, index) => {
 		const isCleanupStep = isCleanupPlanStep(step);
 
 		return (
@@ -32,24 +74,27 @@ export const PlanStepCards = ({
 								STEP {index + 1}
 							</Text>
 							<Flex align="center" gap="sm" wrap="wrap">
-								<Heading size="sm">{step.title}</Heading>
-								{isCleanupStep ? (
-									<Badge colorScheme="amber" variant="subtle">
-										洗い物
-									</Badge>
-								) : null}
+								<Heading size="sm">{step.label}</Heading>
+								<Badge colorScheme={getKindColorScheme(step.kind)} variant="subtle">
+									{getKindLabel(step.kind)}
+								</Badge>
 							</Flex>
 						</VStack>
-						{useDurationBadge ? (
-							<Badge colorScheme="blue" variant="subtle">
-								約{step.estimatedMinutes}分
-							</Badge>
-						) : (
-							<Text color="fg.subtle">約{step.estimatedMinutes}分</Text>
-						)}
+						<VStack align="end" gap="xs">
+							{useDurationBadge ? (
+								<Badge colorScheme="blue" variant="subtle">
+									{step.time}分
+								</Badge>
+							) : (
+								<Text color="fg.subtle">{step.time}分</Text>
+							)}
+							<Text color="fg.subtle" fontSize="sm">
+								{step.timeline.start}-{step.timeline.end}分
+							</Text>
+						</VStack>
 					</Flex>
 
-					<Text whiteSpace="pre-wrap">{step.description}</Text>
+					<Text whiteSpace="pre-wrap">{step.instructions}</Text>
 
 					{showRecipeSource && step.recipeSourceId ? (
 						<Text color="fg.subtle" fontSize="sm">
@@ -57,15 +102,35 @@ export const PlanStepCards = ({
 						</Text>
 					) : null}
 
-					{step.dependencies.length > 0 ? (
+					{step.after.length > 0 ? (
 						<Text color="fg.subtle" fontSize="sm">
-							依存: {step.dependencies.join(', ')}
+							after: {step.after.map((stepId) => stepLabelById[stepId] ?? stepId).join(', ')}
 						</Text>
 					) : null}
 
-					<Text color="fg.subtle" fontSize="sm">
-						並行実行: {step.canParallelize ? '可能' : '不可'}
-					</Text>
+					{step.req && Object.keys(step.req).length > 0 ? (
+						<Text color="fg.subtle" fontSize="sm">
+							リソース:{' '}
+							{Object.entries(step.req)
+								.map(([key, value]) => `${key}:${value}`)
+								.join(', ')}
+						</Text>
+					) : null}
+
+					{step.uses?.length ? (
+						<Text color="fg.subtle" fontSize="sm">
+							使用材料:{' '}
+							{step.uses
+								.map((materialId) => materialLabelById[materialId] ?? materialId)
+								.join(', ')}
+						</Text>
+					) : null}
+
+					{typeof step.slack === 'number' && step.slack > 0 ? (
+						<Text color="fg.subtle" fontSize="sm">
+							許容遅延: {step.slack}分
+						</Text>
+					) : null}
 
 					{showTimers && step.timers?.length ? (
 						<Text color="fg.subtle" fontSize="sm">
@@ -102,3 +167,4 @@ export const PlanStepCards = ({
 			</Card.Root>
 		);
 	});
+};

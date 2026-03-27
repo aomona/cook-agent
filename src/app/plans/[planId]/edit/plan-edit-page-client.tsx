@@ -15,9 +15,9 @@ import {
 } from '@workspaces/ui';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
+import { PlanMaterialsSection } from '@/components/plan-materials-section';
 import { PlanStepCards } from '@/components/plan-step-cards';
 import { PlanTimelineLazy } from '@/components/plan-timeline-lazy';
-import { RecipeIngredientsSection } from '@/components/recipe-ingredients-section';
 import type { PlanEditorData } from '@/lib/plans/queries';
 import type { PlanDocument } from '@/lib/plans/types';
 import { PlannerProgressModal } from './planner-progress-modal';
@@ -103,17 +103,6 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 			recipe.title ?? recipe.normalizedRecipe?.title ?? recipe.label,
 		]),
 	);
-	const recipeIngredients = generatedPlan
-		? initialPlan.recipes
-				.filter((recipe) => recipe.normalizedRecipe?.ingredients.length)
-				.map((recipe) => ({
-					baseServings: recipe.normalizedRecipe?.servings,
-					id: recipe.id,
-					ingredients: recipe.normalizedRecipe?.ingredients ?? [],
-					requestedServings: generatedPlan.servings,
-					title: recipe.title ?? recipe.normalizedRecipe?.title ?? recipe.label,
-				}))
-		: [];
 
 	const runPlannerStream = async ({
 		body,
@@ -382,7 +371,9 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 					))}
 				</VStack>
 
-				<RecipeIngredientsSection recipes={recipeIngredients} />
+				{generatedPlan ? (
+					<PlanMaterialsSection plan={generatedPlan} recipeTitleById={recipeTitleById} />
+				) : null}
 
 				{generatedPlan ? (
 					<VStack align="stretch" gap="md">
@@ -400,7 +391,7 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 							) : null}
 						</Flex>
 
-						<PlanTimelineLazy plan={generatedPlan} recipeTitleById={recipeTitleById} />
+						<PlanTimelineLazy editable plan={generatedPlan} recipeTitleById={recipeTitleById} />
 
 						<PlanStepCards
 							plan={generatedPlan}
@@ -410,6 +401,16 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 							useDurationBadge
 						/>
 					</VStack>
+				) : initialPlan.hasIncompatibleActiveVersion ? (
+					<Card.Root borderColor="amber.300" bg="amber.50" variant="outline">
+						<Card.Body gap="sm">
+							<Heading size="md">古い形式の工程です</Heading>
+							<Text color="fg.subtle">
+								この plan は新しい timeline-first schema
+								に未対応です。再生成すると新形式に置き換わります。
+							</Text>
+						</Card.Body>
+					</Card.Root>
 				) : null}
 
 				{generatedPlan ? (

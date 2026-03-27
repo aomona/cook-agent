@@ -19,9 +19,11 @@ const PlanTimeline = dynamic(
 );
 
 export const PlanTimelineLazy = ({
+	editable = false,
 	plan,
 	recipeTitleById,
 }: {
+	editable?: boolean;
 	plan: PlanDocument;
 	recipeTitleById: Record<string, string>;
-}) => <PlanTimeline plan={plan} recipeTitleById={recipeTitleById} />;
+}) => <PlanTimeline editable={editable} plan={plan} recipeTitleById={recipeTitleById} />;

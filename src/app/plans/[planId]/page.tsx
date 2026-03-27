@@ -2,9 +2,9 @@ import { Badge, Button, Card, Flex, Heading, Text, VStack } from '@workspaces/ui
 import { cookies } from 'next/headers';
 import NextLink from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { PlanMaterialsSection } from '@/components/plan-materials-section';
 import { PlanStepCards } from '@/components/plan-step-cards';
 import { PlanTimelineLazy } from '@/components/plan-timeline-lazy';
-import { RecipeIngredientsSection } from '@/components/recipe-ingredients-section';
 import { getRequestActor } from '@/lib/create-session';
 import {
 	formatPlanDateTime,
@@ -30,23 +30,12 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 		notFound();
 	}
 
-	const requestedServings = plan.activeVersion?.plan.servings ?? plan.requestedServings ?? 1;
-
 	const recipeTitleById = Object.fromEntries(
 		plan.recipes.map((recipe) => [
 			recipe.id,
 			recipe.title ?? recipe.normalizedRecipe?.title ?? recipe.label,
 		]),
 	);
-	const recipeIngredients = plan.recipes
-		.filter((recipe) => recipe.normalizedRecipe?.ingredients.length)
-		.map((recipe) => ({
-			baseServings: recipe.normalizedRecipe?.servings,
-			id: recipe.id,
-			ingredients: recipe.normalizedRecipe?.ingredients ?? [],
-			requestedServings,
-			title: recipe.title ?? recipe.normalizedRecipe?.title ?? recipe.label,
-		}));
 
 	return (
 		<Flex align="center" justify="center" minH="100vh" px="md" py="xl">
@@ -124,8 +113,6 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 					</VStack>
 				)}
 
-				<RecipeIngredientsSection recipes={recipeIngredients} />
-
 				{plan.activeVersion ? (
 					<VStack align="stretch" gap="md">
 						<Flex align="center" justify="space-between" gap="sm" wrap="wrap">
@@ -138,15 +125,35 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 							</VStack>
 							<NextLink href={`/plans/${plan.id}/edit`}>
 								<Button as="span" variant="outline">
-									工程を再生成
+									工程を編集
 								</Button>
 							</NextLink>
 						</Flex>
 
+						<PlanMaterialsSection
+							plan={plan.activeVersion.plan}
+							recipeTitleById={recipeTitleById}
+						/>
+
 						<PlanTimelineLazy plan={plan.activeVersion.plan} recipeTitleById={recipeTitleById} />
 
-						<PlanStepCards plan={plan.activeVersion.plan} />
+						<PlanStepCards plan={plan.activeVersion.plan} recipeTitleById={recipeTitleById} />
 					</VStack>
+				) : plan.hasIncompatibleActiveVersion ? (
+					<Card.Root borderColor="amber.300" bg="amber.50" variant="outline">
+						<Card.Body gap="sm">
+							<Heading size="md">古い形式の工程です</Heading>
+							<Text color="fg.subtle">
+								この計画は新しい timeline-first schema
+								に未対応です。編集画面から再生成してください。
+							</Text>
+							<NextLink href={`/plans/${plan.id}/edit`}>
+								<Button as="span" alignSelf="start">
+									編集画面で再生成
+								</Button>
+							</NextLink>
+						</Card.Body>
+					</Card.Root>
 				) : null}
 			</VStack>
 		</Flex>
