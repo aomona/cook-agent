@@ -14,36 +14,54 @@ const openai = createOpenAI({
 const tavilyApiKey = getRequiredEnv('TAVILY_API_KEY');
 const tavilyBaseUrl = 'https://api.tavily.com';
 
+const plannerReqSchema = z
+	.record(z.string().trim().min(1).max(40), z.number().int().positive().max(8))
+	.refine((value) => Object.keys(value).length <= 10, {
+		message: 'req can include at most 10 resource keys.',
+	});
+
+const plannerStepTimelineSchema = z
+	.object({
+		start: z
+			.number()
+			.nonnegative()
+			.max(24 * 60),
+		end: z
+			.number()
+			.positive()
+			.max(24 * 60),
+	})
+	.refine((value) => value.end > value.start, {
+		message: 'timeline.end must be greater than timeline.start.',
+	});
+
 const plannerOutputSchema = z.object({
-	version: z.literal(1),
+	version: z.literal(2),
 	title: z.string().trim().min(1).max(160),
 	servings: z.number().int().positive().max(100),
 	steps: z
 		.array(
 			z.object({
-				id: z.string().trim().min(1).max(100),
-				title: z.string().trim().min(1).max(120),
-				description: z.string().trim().min(1).max(600),
-				dependencies: z.array(z.string().trim().min(1).max(100)).max(20),
-				estimatedMinutes: z
+				id: z.string().trim().min(1).max(120),
+				label: z.string().trim().min(1).max(160),
+				instructions: z.string().trim().min(1).max(1000),
+				timeline: plannerStepTimelineSchema,
+				time: z
 					.number()
-					.int()
 					.positive()
 					.max(24 * 60),
-				canParallelize: z.boolean(),
+				after: z.array(z.string().trim().min(1).max(120)).max(30),
+				kind: z.enum(['prep', 'cook', 'finish', 'wait', 'cleanup']),
 				recipeSourceId: z.uuid().nullable(),
+				req: plannerReqSchema.nullable(),
+				uses: z.array(z.string().trim().min(1).max(120)).max(40).nullable(),
+				slack: z
+					.number()
+					.nonnegative()
+					.max(24 * 60)
+					.nullable(),
 				notesForUser: z.array(z.string().trim().min(1).max(200)).max(10).nullable(),
 				recoveryTips: z.array(z.string().trim().min(1).max(200)).max(10).nullable(),
-				ingredients: z
-					.array(
-						z.strictObject({
-							ingredientId: z.string().trim().min(1).max(120),
-							preparation: z.string().trim().min(1).max(120).nullable(),
-							quantity: z.string().trim().min(1).max(120).nullable(),
-						}),
-					)
-					.max(20)
-					.nullable(),
 				outputs: z.array(z.string().trim().min(1).max(120)).max(10).nullable(),
 				timers: z
 					.array(
@@ -64,21 +82,33 @@ const plannerOutputSchema = z.object({
 			}),
 		)
 		.min(1)
-		.max(60),
-	metadata: z
-		.strictObject({
-			availableEquipment: z.array(z.string().trim().min(1).max(80)).max(30),
-			constraints: z.array(z.string().trim().min(1).max(160)).max(30),
-			recipeSourceIds: z.array(z.uuid()).max(20),
-		})
-		.nullable(),
+		.max(80),
 });
 
 const plannerOutput = Output.object({
 	schema: plannerOutputSchema,
 	name: 'cooking_plan',
-	description: 'Structured cooking execution plan for a multi-step meal workflow.',
+	description: 'Timeline-first cooking execution plan with explicit schedule and resource usage.',
 });
+
+const buildPlanMetadata = (input: PlanGenerationInput) => ({
+	availableEquipment: input.availableEquipment,
+	constraints: input.constraints,
+	recipeSourceIds: input.recipes.map((recipe) => recipe.recipeSourceId),
+});
+
+const finalizePlanDocument = ({
+	input,
+	output,
+}: {
+	input: PlanGenerationInput;
+	output: z.infer<typeof plannerOutputSchema>;
+}): PlanDocument =>
+	planDocumentSchema.parse({
+		...output,
+		materials: input.materials,
+		metadata: buildPlanMetadata(input),
+	});
 
 const webSearchToolInputSchema = z.object({
 	query: z.string().trim().min(1).max(240),
@@ -245,30 +275,35 @@ const buildPrompt = (input: PlanGenerationInput): string =>
 		'- Split combined recipe instructions into multiple tasks whenever that improves execution clarity.',
 		'- Prefer roughly 14 to 40 steps unless the meal is genuinely simple.',
 		'- Do not omit fields required by the schema; use null when a nullable field has no value.',
-		'- Use canParallelize=true for work that can proceed in parallel without violating dependencies.',
-		'- Express all ordering constraints explicitly in dependencies.',
+		'- Use explicit timeline windows instead of implicit scheduling heuristics.',
+		'- Express all ordering constraints explicitly in after.',
 		'- Put safety-critical guidance in notesForUser or recoveryTips.',
 		'- The goal is completing the meal, not writing polished prose.',
 		'- If information is missing, choose the most conservative safe assumption.',
 		'- If servings information is missing or ambiguous, treat the user-provided requestedServings and any explicit per-recipe servings in the input as the only trusted serving counts.',
 		'Planning policy:',
 		'- Think through the full meal flow before writing steps.',
-		'- Break long prep, heating, and finishing work into smaller executable units.',
-		'- Reduce idle time by parallelizing safe work.',
+		'- Break long prep, heating, waiting, and finishing work into smaller executable units.',
+		'- Use overlapping timelines only when after constraints and req resources make that overlap realistic.',
 		'- Fill waiting time with other work when possible.',
 		'- If there is idle time or cleanup load is likely to accumulate, add explicit washing/cleanup steps during the workflow to reduce the final burden.',
 		'- Avoid overloading the final minutes before serving.',
 		'- Add timers wherever they materially help execution.',
 		'Field guidance:',
-		'- Use exactly these JSON field names: version, title, servings, steps, id, title, description, dependencies, estimatedMinutes, canParallelize, recipeSourceId, notesForUser, recoveryTips, ingredients, outputs, timers, tags, metadata.',
-		'- dependencies must contain only earlier step IDs.',
-		'- canParallelize should be false unless the step can truly overlap with other pending work.',
-		'- When you reference ingredients in a step, use ingredient IDs from the corresponding recipe.',
+		'- Use exactly these JSON field names: version, title, servings, steps, id, label, instructions, timeline, start, end, time, after, kind, recipeSourceId, req, uses, slack, notesForUser, recoveryTips, outputs, timers, tags.',
+		'- Step IDs must be unique across the full combined meal. Use the format <recipeSourceId>:<stepKey> whenever a step belongs to a specific recipe.',
+		'- after must contain only earlier step IDs and must never include the same step id.',
+		'- timeline.start and timeline.end are minutes from the beginning of the meal plan.',
+		'- time must equal timeline.end - timeline.start.',
+		'- kind must be one of prep, cook, finish, wait, cleanup.',
 		'- Use recipeSourceId whenever a step clearly comes from one recipe.',
+		'- Use req to describe resource usage such as stove, hands, oven, bowl, knife, or board.',
+		'- Use the material IDs from the provided planning context materials list when filling uses.',
 		'- Timer durations must be in seconds.',
-		'- When a step is mainly washing dishes, tidying tools, or resetting the workspace, include the tag cleanup in tags.',
+		'- Use slack to represent how many minutes the start can move later without breaking the plan.',
+		'- When a step is mainly washing dishes, tidying tools, or resetting the workspace, use kind=cleanup and include the tag cleanup in tags.',
 		'- For nullable fields with no value, return null instead of omitting the key.',
-		'- metadata should be either null or an object with availableEquipment, constraints, and recipeSourceIds.',
+		'- Do not output materials or metadata; the system will attach them from the planning context.',
 		'',
 		JSON.stringify(input, null, 2),
 	].join('\n');
@@ -299,30 +334,35 @@ const buildImprovementPrompt = ({
 		'- Use new step IDs only for newly introduced steps.',
 		'- Remove obsolete steps instead of leaving dead branches.',
 		'- Do not omit fields required by the schema; use null when a nullable field has no value.',
-		'- Use canParallelize=true for work that can proceed in parallel without violating dependencies.',
-		'- Express all ordering constraints explicitly in dependencies.',
+		'- Use explicit timeline windows instead of implicit scheduling heuristics.',
+		'- Express all ordering constraints explicitly in after.',
 		'- Put safety-critical guidance in notesForUser or recoveryTips.',
 		'- The goal is completing the meal, not writing polished prose.',
 		'- If information is missing, choose the most conservative safe assumption.',
 		'- If servings information is missing or ambiguous, treat the user-provided requestedServings and any explicit per-recipe servings in the input as the only trusted serving counts.',
 		'Planning policy:',
 		'- Think through the full meal flow before writing steps.',
-		'- Break long prep, heating, and finishing work into smaller executable units.',
-		'- Reduce idle time by parallelizing safe work.',
+		'- Break long prep, heating, waiting, and finishing work into smaller executable units.',
+		'- Use overlapping timelines only when after constraints and req resources make that overlap realistic.',
 		'- Fill waiting time with other work when possible.',
 		'- If there is idle time or cleanup load is likely to accumulate, add explicit washing/cleanup steps during the workflow to reduce the final burden.',
 		'- Avoid overloading the final minutes before serving.',
 		'- Add timers wherever they materially help execution.',
 		'Field guidance:',
-		'- Use exactly these JSON field names: version, title, servings, steps, id, title, description, dependencies, estimatedMinutes, canParallelize, recipeSourceId, notesForUser, recoveryTips, ingredients, outputs, timers, tags, metadata.',
-		'- dependencies must contain only earlier step IDs.',
-		'- canParallelize should be false unless the step can truly overlap with other pending work.',
-		'- When you reference ingredients in a step, use ingredient IDs from the corresponding recipe.',
+		'- Use exactly these JSON field names: version, title, servings, steps, id, label, instructions, timeline, start, end, time, after, kind, recipeSourceId, req, uses, slack, notesForUser, recoveryTips, outputs, timers, tags.',
+		'- Step IDs must be unique across the full combined meal. Use the format <recipeSourceId>:<stepKey> whenever a step belongs to a specific recipe.',
+		'- after must contain only earlier step IDs and must never include the same step id.',
+		'- timeline.start and timeline.end are minutes from the beginning of the meal plan.',
+		'- time must equal timeline.end - timeline.start.',
+		'- kind must be one of prep, cook, finish, wait, cleanup.',
 		'- Use recipeSourceId whenever a step clearly comes from one recipe.',
+		'- Use req to describe resource usage such as stove, hands, oven, bowl, knife, or board.',
+		'- Use the material IDs from the provided planning context materials list when filling uses.',
 		'- Timer durations must be in seconds.',
-		'- When a step is mainly washing dishes, tidying tools, or resetting the workspace, include the tag cleanup in tags.',
+		'- Use slack to represent how many minutes the start can move later without breaking the plan.',
+		'- When a step is mainly washing dishes, tidying tools, or resetting the workspace, use kind=cleanup and include the tag cleanup in tags.',
 		'- For nullable fields with no value, return null instead of omitting the key.',
-		'- metadata should be either null or an object with availableEquipment, constraints, and recipeSourceIds.',
+		'- Do not output materials or metadata; the system will attach them from the planning context.',
 		'',
 		'Improvement request:',
 		improvementRequest,
@@ -350,11 +390,11 @@ const createPlannerAgent = () =>
 		instructions: [
 			'Plan kitchen work for a cooking prototype.',
 			'Think carefully about full-meal timing so dishes land together.',
-			'Think carefully about ordering, parallelism, timing, and failure recovery.',
+			'Think carefully about ordering, timing, resource contention, and failure recovery.',
 			'When realistic, insert cleanup or dishwashing work into idle windows so the final minutes stay lighter.',
 			'Use Tavily web tools only when missing information blocks a better plan.',
 			'Prefer the provided normalized recipes over web results whenever they are sufficient.',
-			'Keep the final plan grounded in the provided recipes and constraints.',
+			'Keep the final plan grounded in the provided recipes, materials, and constraints.',
 		].join(' '),
 		tools: {
 			fetch_url: createFetchUrlTool(),
@@ -380,7 +420,10 @@ export const generateCookingPlan = async (input: PlanGenerationInput): Promise<P
 		prompt: buildPrompt(input),
 	});
 
-	return planDocumentSchema.parse(result.output);
+	return finalizePlanDocument({
+		input,
+		output: result.output,
+	});
 };
 
 export const streamCookingPlan = async ({
@@ -439,9 +482,12 @@ export const streamCookingPlan = async ({
 		}
 	}
 
-	const planDocument = await result.output;
+	const planDocument = finalizePlanDocument({
+		input,
+		output: await result.output,
+	});
 
-	return planDocumentSchema.parse(planDocument);
+	return planDocument;
 };
 
 export const improveCookingPlan = async (input: PlanImprovementInput): Promise<PlanDocument> => {
@@ -450,7 +496,10 @@ export const improveCookingPlan = async (input: PlanImprovementInput): Promise<P
 		prompt: buildImprovementPrompt(input),
 	});
 
-	return planDocumentSchema.parse(result.output);
+	return finalizePlanDocument({
+		input: input.plannerInput,
+		output: result.output,
+	});
 };
 
 export const streamImproveCookingPlan = async ({
@@ -509,7 +558,10 @@ export const streamImproveCookingPlan = async ({
 		}
 	}
 
-	const planDocument = await result.output;
+	const planDocument = finalizePlanDocument({
+		input: input.plannerInput,
+		output: await result.output,
+	});
 
-	return planDocumentSchema.parse(planDocument);
+	return planDocument;
 };
