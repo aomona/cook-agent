@@ -9,7 +9,6 @@ export type PlanTimelineGroupData = {
 };
 
 export type PlanTimelineItemData = {
-	canParallelize: boolean;
 	description: string;
 	durationMinutes: number;
 	endMinute: number;
@@ -17,13 +16,43 @@ export type PlanTimelineItemData = {
 	groupColor: string;
 	id: string;
 	isCleanup: boolean;
+	kind: string;
+	recipeSourceId: string | null;
+	req: Record<string, number>;
 	startMinute: number;
 	stepNumber: number;
 	title: string;
+	uses: string[];
+	slack: number;
+	after: string[];
 };
 
 const DEFAULT_GROUP_ID = 'shared';
-const GROUP_COLORS = ['#2563eb', '#d97706', '#059669', '#dc2626', '#7c3aed', '#0891b2'];
+const GROUP_COLORS = ['#2563eb', '#059669', '#dc2626', '#7c3aed', '#0891b2', '#d97706'];
+
+const getTimelineColor = ({
+	groupColor,
+	kind,
+	isCleanup,
+}: {
+	groupColor: string;
+	kind: string;
+	isCleanup: boolean;
+}): string => {
+	if (isCleanup) {
+		return '#d97706';
+	}
+
+	if (kind === 'wait') {
+		return '#22c55e';
+	}
+
+	if (kind === 'finish') {
+		return '#8b5cf6';
+	}
+
+	return groupColor;
+};
 
 export const buildPlanTimelineData = ({
 	plan,
@@ -63,47 +92,37 @@ export const buildPlanTimelineData = ({
 	}
 
 	const groupColorById = new Map(groups.map((group) => [group.id, group.color]));
-	const stepEndMinuteById = new Map<string, number>();
-	const items: PlanTimelineItemData[] = [];
-	let sequentialCursor = 0;
-
-	for (const [index, step] of plan.steps.entries()) {
-		const dependencyEndMinute = step.dependencies.reduce((latestMinute, dependencyId) => {
-			const dependencyEnd = stepEndMinuteById.get(dependencyId) ?? 0;
-
-			return Math.max(latestMinute, dependencyEnd);
-		}, 0);
-		const startMinute = step.canParallelize
-			? dependencyEndMinute
-			: Math.max(dependencyEndMinute, sequentialCursor);
-		const endMinute = startMinute + step.estimatedMinutes;
+	const items: PlanTimelineItemData[] = plan.steps.map((step, index) => {
 		const group =
 			step.recipeSourceId && groupIds.has(step.recipeSourceId)
 				? step.recipeSourceId
 				: DEFAULT_GROUP_ID;
+		const baseGroupColor = groupColorById.get(group) ?? '#475569';
 		const isCleanup = isCleanupPlanStep(step);
-		const groupColor = isCleanup ? '#d97706' : (groupColorById.get(group) ?? '#475569');
 
-		stepEndMinuteById.set(step.id, endMinute);
-
-		if (!step.canParallelize) {
-			sequentialCursor = endMinute;
-		}
-
-		items.push({
-			canParallelize: step.canParallelize,
-			description: step.description,
-			durationMinutes: step.estimatedMinutes,
-			endMinute,
+		return {
+			after: [...step.after],
+			description: step.instructions,
+			durationMinutes: step.time,
+			endMinute: step.timeline.end,
 			group,
-			groupColor,
+			groupColor: getTimelineColor({
+				groupColor: baseGroupColor,
+				kind: step.kind,
+				isCleanup,
+			}),
 			id: step.id,
 			isCleanup,
-			startMinute,
+			kind: step.kind,
+			recipeSourceId: step.recipeSourceId ?? null,
+			req: step.req ? { ...step.req } : {},
+			slack: step.slack ?? 0,
+			startMinute: step.timeline.start,
 			stepNumber: index + 1,
-			title: step.title,
-		});
-	}
+			title: step.label,
+			uses: [...(step.uses ?? [])],
+		};
+	});
 
 	return {
 		groups,
