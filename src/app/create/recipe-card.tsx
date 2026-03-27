@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Button, Card, Flex, Heading, Input, Text } from '@workspaces/ui';
+import { Badge, Button, Card, Flex, Heading, Input, Link, Text } from '@workspaces/ui';
 import type { CreateRecipeItem } from '@/lib/create-session';
 import { isTemporaryCreateRecipeId, RecipeStatus } from './recipe-status';
 
@@ -47,14 +47,27 @@ export const RecipeCard = ({
 
 			{recipe.title ? <Heading size="md">{recipe.title}</Heading> : null}
 
-			<Text
-				color={recipe.title ? 'fg.subtle' : 'inherit'}
-				lineClamp={2}
-				overflowWrap="anywhere"
-				whiteSpace="pre-wrap"
-			>
-				{recipe.label}
-			</Text>
+			{recipe.type === 'url' ? (
+				<Link
+					href={recipe.label}
+					lineClamp={2}
+					overflowWrap="anywhere"
+					rel="noreferrer"
+					target="_blank"
+					whiteSpace="pre-wrap"
+				>
+					{recipe.label}
+				</Link>
+			) : (
+				<Text
+					color={recipe.title ? 'fg.subtle' : 'inherit'}
+					lineClamp={2}
+					overflowWrap="anywhere"
+					whiteSpace="pre-wrap"
+				>
+					{recipe.label}
+				</Text>
+			)}
 
 			{recipe.summary ? <Text whiteSpace="pre-wrap">{recipe.summary}</Text> : null}
 
