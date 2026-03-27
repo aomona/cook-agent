@@ -1,4 +1,5 @@
 import { Badge, Card, Flex, Heading, Text, VStack } from '@workspaces/ui';
+import { isCleanupPlanStep } from '@/lib/plans/step-tags';
 import type { PlanDocument } from '@/lib/plans/types';
 
 export const PlanStepCards = ({
@@ -14,60 +15,90 @@ export const PlanStepCards = ({
 	showTimers?: boolean;
 	useDurationBadge?: boolean;
 }) =>
-	plan.steps.map((step, index) => (
-		<Card.Root key={step.id} variant="outline">
-			<Card.Body gap="sm">
-				<Flex align="start" justify="space-between" gap="sm" wrap="wrap">
-					<VStack align="stretch" gap="xs">
+	plan.steps.map((step, index) => {
+		const isCleanupStep = isCleanupPlanStep(step);
+
+		return (
+			<Card.Root
+				key={step.id}
+				borderColor={isCleanupStep ? 'amber.300' : undefined}
+				bg={isCleanupStep ? 'amber.50' : undefined}
+				variant="outline"
+			>
+				<Card.Body gap="sm">
+					<Flex align="start" justify="space-between" gap="sm" wrap="wrap">
+						<VStack align="stretch" gap="xs">
+							<Text color="fg.subtle" fontSize="sm">
+								STEP {index + 1}
+							</Text>
+							<Flex align="center" gap="sm" wrap="wrap">
+								<Heading size="sm">{step.title}</Heading>
+								{isCleanupStep ? (
+									<Badge colorScheme="amber" variant="subtle">
+										洗い物
+									</Badge>
+								) : null}
+							</Flex>
+						</VStack>
+						{useDurationBadge ? (
+							<Badge colorScheme="blue" variant="subtle">
+								約{step.estimatedMinutes}分
+							</Badge>
+						) : (
+							<Text color="fg.subtle">約{step.estimatedMinutes}分</Text>
+						)}
+					</Flex>
+
+					<Text whiteSpace="pre-wrap">{step.description}</Text>
+
+					{showRecipeSource && step.recipeSourceId ? (
 						<Text color="fg.subtle" fontSize="sm">
-							STEP {index + 1}
+							元レシピ: {recipeTitleById?.[step.recipeSourceId] ?? step.recipeSourceId}
 						</Text>
-						<Heading size="sm">{step.title}</Heading>
-					</VStack>
-					{useDurationBadge ? (
-						<Badge colorScheme="blue" variant="subtle">
-							約{step.estimatedMinutes}分
-						</Badge>
-					) : (
-						<Text color="fg.subtle">約{step.estimatedMinutes}分</Text>
-					)}
-				</Flex>
+					) : null}
 
-				<Text whiteSpace="pre-wrap">{step.description}</Text>
+					{step.dependencies.length > 0 ? (
+						<Text color="fg.subtle" fontSize="sm">
+							依存: {step.dependencies.join(', ')}
+						</Text>
+					) : null}
 
-				{showRecipeSource && step.recipeSourceId ? (
 					<Text color="fg.subtle" fontSize="sm">
-						元レシピ: {recipeTitleById?.[step.recipeSourceId] ?? step.recipeSourceId}
+						並行実行: {step.canParallelize ? '可能' : '不可'}
 					</Text>
-				) : null}
 
-				{step.dependencies.length > 0 ? (
-					<Text color="fg.subtle" fontSize="sm">
-						依存: {step.dependencies.join(', ')}
-					</Text>
-				) : null}
+					{showTimers && step.timers?.length ? (
+						<Text color="fg.subtle" fontSize="sm">
+							タイマー: {step.timers.map((timer) => timer.label).join(', ')}
+						</Text>
+					) : null}
 
-				<Text color="fg.subtle" fontSize="sm">
-					並行実行: {step.canParallelize ? '可能' : '不可'}
-				</Text>
+					{step.tags?.length ? (
+						<Flex gap="xs" wrap="wrap">
+							{step.tags.map((tag) => (
+								<Badge
+									key={tag}
+									colorScheme={tag.toLowerCase() === 'cleanup' ? 'amber' : 'blackAlpha'}
+									variant="subtle"
+								>
+									{tag}
+								</Badge>
+							))}
+						</Flex>
+					) : null}
 
-				{showTimers && step.timers?.length ? (
-					<Text color="fg.subtle" fontSize="sm">
-						タイマー: {step.timers.map((timer) => timer.label).join(', ')}
-					</Text>
-				) : null}
+					{step.notesForUser?.length ? (
+						<Text color="fg.subtle" fontSize="sm">
+							注意: {step.notesForUser.join(' / ')}
+						</Text>
+					) : null}
 
-				{step.notesForUser?.length ? (
-					<Text color="fg.subtle" fontSize="sm">
-						注意: {step.notesForUser.join(' / ')}
-					</Text>
-				) : null}
-
-				{step.recoveryTips?.length ? (
-					<Text color="fg.subtle" fontSize="sm">
-						リカバリー: {step.recoveryTips.join(' / ')}
-					</Text>
-				) : null}
-			</Card.Body>
-		</Card.Root>
-	));
+					{step.recoveryTips?.length ? (
+						<Text color="fg.subtle" fontSize="sm">
+							リカバリー: {step.recoveryTips.join(' / ')}
+						</Text>
+					) : null}
+				</Card.Body>
+			</Card.Root>
+		);
+	});

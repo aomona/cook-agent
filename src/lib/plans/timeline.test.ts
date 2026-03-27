@@ -37,6 +37,7 @@ const plan: PlanDocument = {
 			description: '仕上げる',
 			estimatedMinutes: 4,
 			id: 'step-4',
+			tags: ['cleanup'],
 			title: '仕上げ',
 		},
 	],
@@ -75,15 +76,31 @@ describe('buildPlanTimelineData', () => {
 				endMinute: item.endMinute,
 				group: item.group,
 				id: item.id,
+				isCleanup: item.isCleanup,
 				startMinute: item.startMinute,
 			})),
 		).toEqual([
-			{ endMinute: 5, group: 'shared', id: 'step-1', startMinute: 0 },
-			{ endMinute: 8, group: 'recipe-a', id: 'step-2', startMinute: 5 },
-			{ endMinute: 12, group: 'recipe-b', id: 'step-3', startMinute: 5 },
-			{ endMinute: 16, group: 'shared', id: 'step-4', startMinute: 12 },
+			{ endMinute: 5, group: 'shared', id: 'step-1', isCleanup: false, startMinute: 0 },
+			{ endMinute: 8, group: 'recipe-a', id: 'step-2', isCleanup: false, startMinute: 5 },
+			{ endMinute: 12, group: 'recipe-b', id: 'step-3', isCleanup: false, startMinute: 5 },
+			{ endMinute: 16, group: 'shared', id: 'step-4', isCleanup: true, startMinute: 12 },
 		]);
 		expect(result.totalMinutes).toBe(16);
+	});
+
+	test('uses cleanup color for cleanup-tagged steps', () => {
+		const result = buildPlanTimelineData({
+			plan,
+			recipeTitleById: {
+				'recipe-a': '親子丼',
+				'recipe-b': '味噌汁',
+			},
+		});
+
+		expect(result.items.find((item) => item.id === 'step-4')).toMatchObject({
+			groupColor: '#d97706',
+			isCleanup: true,
+		});
 	});
 
 	test('falls back to recipeSourceId when title mapping is missing', () => {

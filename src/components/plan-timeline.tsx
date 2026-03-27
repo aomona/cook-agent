@@ -25,6 +25,7 @@ type PlanTimelineItem = TimelineItemBase<number> & {
 	description: string;
 	durationMinutes: number;
 	groupColor: string;
+	isCleanup: boolean;
 	stepNumber: number;
 };
 
@@ -116,7 +117,7 @@ export const PlanTimeline = ({ plan, recipeTitleById }: PlanTimelineProps) => {
 													textTransform: 'uppercase',
 												}}
 											>
-												Step {item.stepNumber}
+												{item.isCleanup ? 'Cleanup' : `Step ${item.stepNumber}`}
 											</div>
 											<div
 												style={{
@@ -139,7 +140,8 @@ export const PlanTimeline = ({ plan, recipeTitleById }: PlanTimelineProps) => {
 													whiteSpace: 'nowrap',
 												}}
 											>
-												{item.durationMinutes}分 {item.canParallelize ? '• 並行可' : '• 直列'}
+												{item.durationMinutes}分{' '}
+												{item.isCleanup ? '• 洗い物' : item.canParallelize ? '• 並行可' : '• 直列'}
 											</div>
 										</div>
 									</div>

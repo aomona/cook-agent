@@ -1,3 +1,4 @@
+import { isCleanupPlanStep } from '@/lib/plans/step-tags';
 import type { PlanDocument } from '@/lib/plans/types';
 
 export type PlanTimelineGroupData = {
@@ -15,6 +16,7 @@ export type PlanTimelineItemData = {
 	group: string;
 	groupColor: string;
 	id: string;
+	isCleanup: boolean;
 	startMinute: number;
 	stepNumber: number;
 	title: string;
@@ -79,7 +81,8 @@ export const buildPlanTimelineData = ({
 			step.recipeSourceId && groupIds.has(step.recipeSourceId)
 				? step.recipeSourceId
 				: DEFAULT_GROUP_ID;
-		const groupColor = groupColorById.get(group) ?? '#475569';
+		const isCleanup = isCleanupPlanStep(step);
+		const groupColor = isCleanup ? '#d97706' : (groupColorById.get(group) ?? '#475569');
 
 		stepEndMinuteById.set(step.id, endMinute);
 
@@ -95,6 +98,7 @@ export const buildPlanTimelineData = ({
 			group,
 			groupColor,
 			id: step.id,
+			isCleanup,
 			startMinute,
 			stepNumber: index + 1,
 			title: step.title,
