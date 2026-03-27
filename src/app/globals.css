@@ -37,34 +37,100 @@ body {
 	min-width: 56rem;
 }
 
-.plan-timeline .react-calendar-timeline {
-	border: 1px solid color-mix(in srgb, currentColor 10%, transparent);
-	border-radius: 18px;
+.plan-timeline-shell {
+	display: grid;
+	gap: 1rem;
+}
+
+.plan-timeline-ruler {
+	display: grid;
+	gap: 0.5rem;
+}
+
+.plan-timeline-ruler-labels {
+	display: flex;
+	justify-content: space-between;
+	color: color-mix(in srgb, currentColor 50%, transparent);
+	font-size: 0.75rem;
+}
+
+.plan-timeline-ruler-track {
+	position: relative;
+	height: 0.5rem;
+	border-radius: 9999px;
+	background: color-mix(in srgb, currentColor 8%, white);
 	overflow: hidden;
 }
 
-.plan-timeline .rct-sidebar {
-	background: color-mix(in srgb, currentColor 4%, white);
-	border-right: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+.plan-timeline-grid-line,
+.plan-timeline-row-grid-line {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 1px;
+	background: color-mix(in srgb, currentColor 10%, transparent);
 }
 
-.plan-timeline .rct-sidebar .rct-sidebar-row {
-	border-bottom: 1px solid color-mix(in srgb, currentColor 8%, transparent);
-	font-weight: 600;
+.plan-timeline-conflict {
+	position: absolute;
+	inset-block: 0;
+	border-radius: 9999px;
+	background: color-mix(in srgb, #ef4444 38%, transparent);
 }
 
-.plan-timeline .rct-header-root {
-	background: color-mix(in srgb, currentColor 3%, white);
-	border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+.plan-timeline-rows {
+	display: grid;
+	gap: 0.75rem;
 }
 
-.plan-timeline .rct-vertical-lines .rct-vl,
-.plan-timeline .rct-horizontal-lines .rct-hl-even,
-.plan-timeline .rct-horizontal-lines .rct-hl-odd {
-	border-color: color-mix(in srgb, currentColor 8%, transparent);
+.plan-timeline-row {
+	position: relative;
+	display: grid;
+	gap: 0.35rem;
 }
 
-.plan-timeline .rct-dateHeader {
-	color: inherit;
-	font-weight: 600;
+.plan-timeline-row-track {
+	position: relative;
+	height: 3.5rem;
+	border-radius: 0.9rem;
+	background: color-mix(in srgb, currentColor 6%, white);
+	overflow: hidden;
+}
+
+.plan-timeline-step-slack {
+	position: absolute;
+	top: 0.45rem;
+	height: 2.6rem;
+	border: 1px dashed color-mix(in srgb, currentColor 24%, transparent);
+	border-radius: 0.8rem;
+	background: color-mix(in srgb, currentColor 4%, transparent);
+}
+
+.plan-timeline-step-bar {
+	position: absolute;
+	top: 0.45rem;
+	display: flex;
+	align-items: center;
+	height: 2.6rem;
+	padding-inline: 0.75rem;
+	border-radius: 0.8rem;
+	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+	color: #fff;
+	overflow: hidden;
+}
+
+.plan-timeline-step-text {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 0.95rem;
+	font-weight: 700;
+}
+
+.plan-timeline-row-meta {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	padding-inline: 0.25rem;
 }
