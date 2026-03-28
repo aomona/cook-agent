@@ -76,6 +76,7 @@ export const SettingsDrawer = ({
 		'linear-gradient(135deg, rgba(17, 24, 39, 0.94), rgba(20, 83, 45, 0.24))',
 	);
 	const summaryBorderColor = useColorModeValue('green.100', 'green.700');
+	const summaryBadgeVariant = useColorModeValue('subtle' as const, 'solid' as const);
 	const [draft, setDraft] = useState<PlanningSettings>(settings);
 	const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -183,17 +184,17 @@ export const SettingsDrawer = ({
 								</Text>
 								<Flex gap="sm" wrap="wrap">
 									{summary.equipment.map((item) => (
-										<Badge key={item.id} colorScheme="green" variant="subtle">
+										<Badge key={item.id} colorScheme="green" variant={summaryBadgeVariant}>
 											{item.icon} {item.label} x{item.count}
 										</Badge>
 									))}
 									{summary.dietaryRestrictions.map((item) => (
-										<Badge key={item} colorScheme="teal" variant="subtle">
+										<Badge key={item} colorScheme="teal" variant={summaryBadgeVariant}>
 											{item}
 										</Badge>
 									))}
 									{summary.allergens.map((item) => (
-										<Badge key={item} colorScheme="red" variant="subtle">
+										<Badge key={item} colorScheme="red" variant={summaryBadgeVariant}>
 											{item}
 										</Badge>
 									))}
