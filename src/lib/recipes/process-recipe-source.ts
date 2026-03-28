@@ -4,6 +4,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { recipeSources } from '@/db/schema';
 import { assertSafePublicHttpUrl } from '@/lib/network/safe-url';
+import { syncAdjustedRecipesForLinkedSource } from '@/lib/recipes/adjust-plan-recipes';
 import { extractHtmlText } from '@/lib/recipes/extract-html-text';
 import { normalizeRecipeSummary } from '@/lib/recipes/normalize-recipe-summary';
 import { summarizeRecipeSource } from '@/lib/recipes/summarize-recipe-source';
@@ -134,4 +135,14 @@ export const processRecipeSource = async (
 			})
 			.where(eq(recipeSources.id, recipeSourceId));
 	}
+};
+
+export const processRecipeSourceAndSyncPlans = async (
+	recipeSourceId: string,
+	options?: {
+		sourceText?: string;
+	},
+): Promise<void> => {
+	await processRecipeSource(recipeSourceId, options);
+	await syncAdjustedRecipesForLinkedSource(recipeSourceId);
 };

@@ -95,6 +95,7 @@ const plannerOutput = Output.object({
 const buildPlanMetadata = (input: PlanGenerationInput) => ({
 	availableEquipment: input.availableEquipment,
 	constraints: input.constraints,
+	planningSettings: input.planningSettings,
 	recipeSourceIds: input.recipes.map((recipe) => recipe.recipeSourceId),
 });
 
@@ -265,6 +266,7 @@ const buildPrompt = (input: PlanGenerationInput): string =>
 		'Use fetch_url to inspect a specific source after search, or to re-read a recipe sourceUrl already present in the input.',
 		'Prefer conservative safe assumptions over unnecessary searching or fetching.',
 		'If a recipe serving count is missing or ambiguous, do not infer it from weak clues; rely on explicit user input in the provided planning context.',
+		'Use the structured planningSettings object as the source of truth for saved kitchen defaults, and the normalized availableEquipment and constraints arrays as the final planner-ready summary.',
 		'Respect available equipment and listed constraints. Never assume unavailable equipment.',
 		'Important rules:',
 		'- Output must be JSON only.',
@@ -328,6 +330,7 @@ const buildImprovementPrompt = ({
 		'Use fetch_url to inspect a specific source after search, or to re-read a recipe sourceUrl already present in the input.',
 		'Prefer conservative safe assumptions over unnecessary searching or fetching.',
 		'If a recipe serving count is missing or ambiguous, do not infer it from weak clues; rely on explicit user input in the provided planning context.',
+		'Use the structured planningSettings object as the source of truth for saved kitchen defaults, and the normalized availableEquipment and constraints arrays as the final planner-ready summary.',
 		'Respect available equipment and listed constraints. Never assume unavailable equipment.',
 		'Important rules:',
 		'- Output must be JSON only.',

@@ -10,9 +10,16 @@ import {
 	deleteRecipeSourceFromPlan,
 	getRequestActor,
 	type RecipeInputMode,
-	updateRecipeServingsForPlan,
+	retryRecipeAdjustmentForPlan,
+	updateRecipeBaseServingsForPlan,
+	updateRecipeSourceInputForPlan,
+	updateRequestedServingsForPlan,
 } from '@/lib/create-session';
-import { processRecipeSource } from '@/lib/recipes/process-recipe-source';
+import {
+	syncAdjustedRecipeForPlan,
+	syncAdjustedRecipesForPlan,
+} from '@/lib/recipes/adjust-plan-recipes';
+import { processRecipeSourceAndSyncPlans } from '@/lib/recipes/process-recipe-source';
 
 const trimmedUrlSchema = z
 	.string()
@@ -38,6 +45,31 @@ const updateRecipeServingsInputSchema = z.object({
 	servings: z.number().int().min(1).max(100),
 });
 
+const updateRequestedServingsInputSchema = z.object({
+	planId: z.uuid(),
+	requestedServings: z.number().int().min(1).max(24),
+});
+
+const retryRecipeAdjustmentInputSchema = z.object({
+	planId: z.uuid(),
+	recipeId: z.uuid(),
+});
+
+const updateRecipeInputSchema = z.discriminatedUnion('type', [
+	z.object({
+		planId: z.uuid(),
+		recipeId: z.uuid(),
+		type: z.literal('url'),
+		value: trimmedUrlSchema,
+	}),
+	z.object({
+		planId: z.uuid(),
+		recipeId: z.uuid(),
+		type: z.literal('text'),
+		value: z.string().trim().min(1),
+	}),
+]);
+
 const deleteRecipeInputSchema = z.object({
 	planId: z.uuid(),
 	recipeId: z.uuid(),
@@ -62,6 +94,7 @@ const requireRequestActor = async (): Promise<{ userId: string }> => {
 const revalidatePlanRoutes = (planId: string): void => {
 	revalidatePath('/');
 	revalidatePath('/create');
+	revalidatePath('/create/servings');
 	revalidatePath(`/plans/${planId}`);
 	revalidatePath(`/plans/${planId}/edit`);
 };
@@ -90,7 +123,7 @@ export const addRecipeToPlanAction = async ({
 	});
 
 	after(async () => {
-		await processRecipeSource(recipe.id, {
+		await processRecipeSourceAndSyncPlans(recipe.id, {
 			sourceText: payload.type === 'text' ? normalizedValue : undefined,
 		});
 	});
@@ -100,7 +133,7 @@ export const addRecipeToPlanAction = async ({
 	return { recipe };
 };
 
-export const updateRecipeServingsAction = async ({
+export const updateRecipeBaseServingsAction = async ({
 	planId,
 	recipeId,
 	servings,
@@ -115,11 +148,111 @@ export const updateRecipeServingsAction = async ({
 		recipeId,
 		servings,
 	});
-	const recipe = await updateRecipeServingsForPlan({
+	const recipe = await updateRecipeBaseServingsForPlan({
 		planId: payload.planId,
 		recipeSourceId: payload.recipeId,
 		servings: payload.servings,
 		userId: actor.userId,
+	});
+
+	after(async () => {
+		await syncAdjustedRecipeForPlan({
+			planId: payload.planId,
+			recipeSourceId: payload.recipeId,
+		});
+	});
+
+	revalidatePlanRoutes(payload.planId);
+
+	return { recipe };
+};
+
+export const updateRequestedServingsAction = async ({
+	planId,
+	requestedServings,
+}: {
+	planId: string;
+	requestedServings: number;
+}): Promise<void> => {
+	const actor = await requireRequestActor();
+	const payload = updateRequestedServingsInputSchema.parse({
+		planId,
+		requestedServings,
+	});
+
+	await updateRequestedServingsForPlan({
+		planId: payload.planId,
+		requestedServings: payload.requestedServings,
+		userId: actor.userId,
+	});
+
+	after(async () => {
+		await syncAdjustedRecipesForPlan(payload.planId);
+	});
+
+	revalidatePlanRoutes(payload.planId);
+};
+
+export const retryRecipeAdjustmentAction = async ({
+	planId,
+	recipeId,
+}: {
+	planId: string;
+	recipeId: string;
+}): Promise<void> => {
+	const actor = await requireRequestActor();
+	const payload = retryRecipeAdjustmentInputSchema.parse({
+		planId,
+		recipeId,
+	});
+
+	await retryRecipeAdjustmentForPlan({
+		planId: payload.planId,
+		recipeSourceId: payload.recipeId,
+		userId: actor.userId,
+	});
+
+	after(async () => {
+		await syncAdjustedRecipeForPlan({
+			planId: payload.planId,
+			recipeSourceId: payload.recipeId,
+		});
+	});
+
+	revalidatePlanRoutes(payload.planId);
+};
+
+export const updateRecipeInputAction = async ({
+	planId,
+	recipeId,
+	type,
+	value,
+}: {
+	planId: string;
+	recipeId: string;
+	type: RecipeInputMode;
+	value: string;
+}): Promise<{ recipe: CreateRecipeItem }> => {
+	const actor = await requireRequestActor();
+	const payload = updateRecipeInputSchema.parse({
+		planId,
+		recipeId,
+		type,
+		value,
+	});
+	const normalizedValue = payload.type === 'url' ? normalizeUrl(payload.value) : payload.value;
+	const recipe = await updateRecipeSourceInputForPlan({
+		mode: payload.type,
+		planId: payload.planId,
+		recipeSourceId: payload.recipeId,
+		userId: actor.userId,
+		value: normalizedValue,
+	});
+
+	after(async () => {
+		await processRecipeSourceAndSyncPlans(payload.recipeId, {
+			sourceText: payload.type === 'text' ? normalizedValue : undefined,
+		});
 	});
 
 	revalidatePlanRoutes(payload.planId);

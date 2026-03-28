@@ -1,4 +1,4 @@
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import type { PgTableWithColumns } from 'drizzle-orm/pg-core';
 import {
 	foreignKey,
@@ -13,12 +13,15 @@ import {
 	uniqueIndex,
 	uuid,
 } from 'drizzle-orm/pg-core';
+import type { ConstraintSettings, EquipmentSettings } from '@/lib/planning-settings';
 import type {
 	NormalizedRecipe,
 	PlanDocument,
 	PlanPatch,
+	RecipeAdjustmentStatus,
 	RecipeProcessingStatus,
 	RecipeSourceRawContent,
+	RecipeStepChange,
 	SessionEventPayload,
 	SessionEventType,
 } from '@/lib/plans/types';
@@ -36,6 +39,14 @@ export const recipeProcessingStatusEnum = pgEnum('recipe_processing_status', [
 ]);
 
 export const planStatusEnum = pgEnum('plan_status', ['draft', 'ready', 'archived']);
+
+export const recipeAdjustmentStatusEnum = pgEnum('recipe_adjustment_status', [
+	'idle',
+	'needs_base_servings',
+	'adjusting',
+	'completed',
+	'action_required',
+]);
 
 export const planChangeReasonEnum = pgEnum('plan_change_reason', [
 	'initial',
@@ -111,11 +122,23 @@ export const planRecipeSources = pgTable(
 			.notNull()
 			.references(() => recipeSources.id, { onDelete: 'cascade' }),
 		sortOrder: integer('sort_order').notNull().default(0),
+		baseServingsOverride: integer('base_servings_override'),
+		adjustedForServings: integer('adjusted_for_servings'),
+		adjustedRecipe: jsonb('adjusted_recipe').$type<NormalizedRecipe>(),
+		adjustmentStatus: recipeAdjustmentStatusEnum('adjustment_status')
+			.$type<RecipeAdjustmentStatus>()
+			.notNull()
+			.default('idle'),
+		adjustmentAttemptCount: integer('adjustment_attempt_count').notNull().default(0),
+		adjustmentError: text('adjustment_error'),
+		stepChanges: jsonb('step_changes').$type<RecipeStepChange[]>().default(sql`'[]'::jsonb`),
+		adjustedAt: timestamp('adjusted_at', { withTimezone: true }),
 		...timestamps,
 	},
 	(table) => [
 		primaryKey({ columns: [table.planId, table.recipeSourceId] }),
 		index('plan_recipe_sources_plan_id_sort_order_idx').on(table.planId, table.sortOrder),
+		index('plan_recipe_sources_adjustment_status_idx').on(table.adjustmentStatus),
 	],
 );
 
@@ -173,6 +196,19 @@ export const plans: PgTableWithColumns<any> = pgTable(
 		index('plans_user_id_updated_at_idx').on(table.userId, table.updatedAt),
 		index('plans_active_version_id_idx').on(table.activeVersionId),
 	],
+);
+
+export const userPlanningSettings = pgTable(
+	'user_planning_settings',
+	{
+		userId: text('user_id')
+			.primaryKey()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		equipment: jsonb('equipment').$type<EquipmentSettings>().notNull(),
+		constraints: jsonb('constraints').$type<ConstraintSettings>().notNull(),
+		...timestamps,
+	},
+	(table) => [index('user_planning_settings_updated_at_idx').on(table.updatedAt)],
 );
 
 export const cookingSessions = pgTable(
@@ -309,6 +345,13 @@ export const planVersionsRelations = relations(planVersions, ({ one, many }) => 
 		references: [user.id],
 	}),
 	cookingSessions: many(cookingSessions),
+}));
+
+export const userPlanningSettingsRelations = relations(userPlanningSettings, ({ one }) => ({
+	user: one(user, {
+		fields: [userPlanningSettings.userId],
+		references: [user.id],
+	}),
 }));
 
 export const cookingSessionsRelations = relations(cookingSessions, ({ one, many }) => ({

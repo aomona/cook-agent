@@ -1,5 +1,9 @@
 import { z } from 'zod';
+import { planningSettingsSchema } from '@/lib/planning-settings';
 import type {
+	NormalizedIngredient,
+	NormalizedRecipe,
+	NormalizedRecipeStep,
 	PlanDocument,
 	PlanGenerationOptions,
 	PlanMaterial,
@@ -9,12 +13,26 @@ import type {
 	PlanStepResourceRequirements,
 	PlanStepTimeline,
 	PlanTimer,
+	RecipeStepChange,
+	RecipeStepChangeConfidence,
+	RecipeStepChangeType,
 } from '@/lib/plans/types';
 
 const nullableOptional = <TSchema extends z.ZodType>(schema: TSchema) =>
 	z.preprocess((value) => (value === null ? undefined : value), schema.optional());
 
 const planStepKindValues = ['prep', 'cook', 'finish', 'wait', 'cleanup'] as const;
+const recipeStepChangeTypeValues = [
+	'quantity',
+	'heat',
+	'time',
+	'batching',
+	'equipment',
+	'sequence',
+	'safety',
+	'wording',
+] as const;
+const recipeStepChangeConfidenceValues = ['low', 'medium', 'high'] as const;
 
 const planResourceRequirementsSchema = z
 	.record(z.string().trim().min(1).max(40), z.number().int().positive().max(8))
@@ -60,9 +78,56 @@ export const planMaterialSchema = z.object({
 	sourceIngredientId: nullableOptional(z.string().trim().min(1).max(120)),
 }) satisfies z.ZodType<PlanMaterial>;
 
+export const normalizedIngredientSchema = z.object({
+	id: z.string().trim().min(1).max(120),
+	name: z.string().trim().min(1).max(160),
+	amount: nullableOptional(z.string().trim().min(1).max(120)),
+	amountValue: nullableOptional(z.number().positive().max(100000)),
+	amountMin: nullableOptional(z.number().positive().max(100000)),
+	amountMax: nullableOptional(z.number().positive().max(100000)),
+	unit: nullableOptional(z.string().trim().min(1).max(40)),
+	preparation: nullableOptional(z.string().trim().min(1).max(160)),
+	optional: nullableOptional(z.boolean()),
+	substitutions: nullableOptional(z.array(z.string().trim().min(1).max(160)).max(10)),
+}) satisfies z.ZodType<NormalizedIngredient>;
+
+export const normalizedRecipeStepSchema = z.object({
+	id: z.string().trim().min(1).max(120),
+	order: z.number().int().positive().max(200),
+	text: z.string().trim().min(1).max(500),
+	durationMinutes: nullableOptional(
+		z
+			.number()
+			.positive()
+			.max(24 * 60),
+	),
+	usesIngredientIds: nullableOptional(z.array(z.string().trim().min(1).max(120)).max(50)),
+	outputs: nullableOptional(z.array(z.string().trim().min(1).max(160)).max(10)),
+	notes: nullableOptional(z.array(z.string().trim().min(1).max(200)).max(10)),
+}) satisfies z.ZodType<NormalizedRecipeStep>;
+
+export const normalizedRecipeSchema = z.object({
+	title: z.string().trim().min(1).max(160),
+	description: nullableOptional(z.string().trim().min(1).max(240)),
+	servings: nullableOptional(z.number().int().positive().max(100)),
+	ingredients: z.array(normalizedIngredientSchema).max(200),
+	steps: z.array(normalizedRecipeStepSchema).max(80),
+	metadata: nullableOptional(z.record(z.string(), z.unknown())),
+}) satisfies z.ZodType<NormalizedRecipe>;
+
+export const recipeStepChangeSchema = z.object({
+	stepId: z.string().trim().min(1).max(120),
+	changeType: z.enum(recipeStepChangeTypeValues) satisfies z.ZodType<RecipeStepChangeType>,
+	reason: z.string().trim().min(1).max(240),
+	confidence: z.enum(
+		recipeStepChangeConfidenceValues,
+	) satisfies z.ZodType<RecipeStepChangeConfidence>,
+}) satisfies z.ZodType<RecipeStepChange>;
+
 export const planMetadataSchema = z.object({
 	availableEquipment: z.array(z.string().trim().min(1).max(80)).max(30),
 	constraints: z.array(z.string().trim().min(1).max(160)).max(30),
+	planningSettings: nullableOptional(planningSettingsSchema),
 	recipeSourceIds: z.array(z.uuid()).max(20),
 }) satisfies z.ZodType<PlanMetadata>;
 
@@ -124,6 +189,6 @@ export const planDocumentSchema = z.object({
 
 export const planGenerationOptionsSchema = z.object({
 	requestedServings: z.number().int().min(1).max(24),
-	availableEquipment: z.array(z.string().trim().min(1).max(80)).max(30),
-	constraints: z.array(z.string().trim().min(1).max(160)).max(30),
+	availableEquipment: z.array(z.string().trim().min(1).max(80)).max(30).default([]),
+	constraints: z.array(z.string().trim().min(1).max(160)).max(30).default([]),
 }) satisfies z.ZodType<PlanGenerationOptions>;
