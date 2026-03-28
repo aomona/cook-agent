@@ -106,7 +106,7 @@ export const RecipeSourceDetailModal = ({
 							<Badge colorScheme={recipe.type === 'url' ? 'blue' : 'amber'} variant="subtle">
 								{recipe.type === 'url' ? 'URL' : 'TEXT'}
 							</Badge>
-							<Badge colorScheme="blackAlpha" variant="subtle">
+							<Badge colorScheme="gray" variant="subtle">
 								{getRecipeProcessingLabel(recipe.processingStatus)}
 							</Badge>
 							{recipe.adjustedForServings ? (

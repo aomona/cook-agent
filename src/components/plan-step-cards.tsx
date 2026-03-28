@@ -22,7 +22,7 @@ const getKindLabel = (kind: PlanDocument['steps'][number]['kind']): string => {
 const getKindColorScheme = (kind: PlanDocument['steps'][number]['kind']): string => {
 	switch (kind) {
 		case 'cleanup':
-			return 'blackAlpha';
+			return 'gray';
 		case 'cook':
 			return 'blue';
 		case 'finish':
@@ -32,7 +32,7 @@ const getKindColorScheme = (kind: PlanDocument['steps'][number]['kind']): string
 		case 'wait':
 			return 'teal';
 		default:
-			return 'blackAlpha';
+			return 'gray';
 	}
 };
 
@@ -138,7 +138,7 @@ export const PlanStepCards = ({
 							{step.tags.map((tag) => (
 								<Badge
 									key={tag}
-									colorScheme={tag.toLowerCase() === 'cleanup' ? 'amber' : 'blackAlpha'}
+									colorScheme={tag.toLowerCase() === 'cleanup' ? 'amber' : 'gray'}
 									variant="subtle"
 								>
 									{tag}

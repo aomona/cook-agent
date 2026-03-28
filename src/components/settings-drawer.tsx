@@ -23,6 +23,7 @@ import {
 	TabsTab,
 	Text,
 	Textarea,
+	useColorModeValue,
 	VStack,
 } from '@workspaces/ui';
 import { useEffect, useMemo, useState } from 'react';
@@ -70,6 +71,11 @@ export const SettingsDrawer = ({
 	open,
 	settings,
 }: Props) => {
+	const summaryBackground = useColorModeValue(
+		'linear-gradient(135deg, rgba(249, 250, 251, 0.96), rgba(220, 252, 231, 0.9))',
+		'linear-gradient(135deg, rgba(17, 24, 39, 0.94), rgba(20, 83, 45, 0.24))',
+	);
+	const summaryBorderColor = useColorModeValue('green.100', 'green.700');
 	const [draft, setDraft] = useState<PlanningSettings>(settings);
 	const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -147,16 +153,13 @@ export const SettingsDrawer = ({
 							</Text>
 						</VStack>
 						<Flex gap="sm" wrap="wrap">
-							<Badge colorScheme={hasSavedSettings ? 'green' : 'blackAlpha'} variant="subtle">
+							<Badge colorScheme={hasSavedSettings ? 'green' : 'gray'} variant="subtle">
 								{hasSavedSettings ? 'アカウントに保存済み' : 'まだ保存されていません'}
 							</Badge>
 							<Badge colorScheme="blue" variant="subtle">
 								器具 {summary.equipment.length} 件
 							</Badge>
-							<Badge
-								colorScheme={summary.maxCookingMinutes ? 'orange' : 'blackAlpha'}
-								variant="subtle"
-							>
+							<Badge colorScheme={summary.maxCookingMinutes ? 'orange' : 'gray'} variant="subtle">
 								{summary.maxCookingMinutes
 									? `目安 ${summary.maxCookingMinutes}分以内`
 									: '時間制約なし'}
@@ -168,9 +171,9 @@ export const SettingsDrawer = ({
 				<DrawerBody p={0}>
 					<VStack align="stretch" gap={0}>
 						<Box
-							bg="linear-gradient(135deg, rgba(249, 250, 251, 0.96), rgba(220, 252, 231, 0.9))"
+							bg={summaryBackground}
 							borderBottomWidth="1px"
-							borderColor="green.100"
+							borderColor={summaryBorderColor}
 							px="md"
 							py="md"
 						>

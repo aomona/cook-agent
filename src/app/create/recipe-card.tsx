@@ -117,7 +117,7 @@ export const RecipeCard = ({
 								{recipe.adjustedForServings}人分に変換済み
 							</Badge>
 							{recipe.stepChanges.length > 0 ? (
-								<Badge colorScheme="blackAlpha" variant="subtle">
+								<Badge colorScheme="gray" variant="subtle">
 									変更点 {recipe.stepChanges.length} 件
 								</Badge>
 							) : null}

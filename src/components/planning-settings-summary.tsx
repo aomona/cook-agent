@@ -1,4 +1,6 @@
-import { Badge, Card, Flex, Heading, Text, VStack } from '@workspaces/ui';
+'use client';
+
+import { Badge, Card, Flex, Heading, Text, useColorModeValue, VStack } from '@workspaces/ui';
 import type { ReactNode } from 'react';
 import type { PlanningSettings } from '@/lib/planning-settings';
 import { getPlanningSettingsSummary } from '@/lib/planning-settings';
@@ -22,6 +24,11 @@ export const PlanningSettingsSummary = ({
 	settings,
 	title,
 }: Props) => {
+	const summaryBackground = useColorModeValue(
+		'linear-gradient(135deg, rgba(249, 250, 251, 0.98), rgba(236, 253, 245, 0.92))',
+		'linear-gradient(135deg, rgba(18, 24, 38, 0.94), rgba(20, 83, 45, 0.26))',
+	);
+	const summaryBorderColor = useColorModeValue('green.200', 'green.700');
 	const summary = settings ? getPlanningSettingsSummary(settings) : null;
 	const equipmentItems = summary?.equipment ?? [];
 	const maxCookingMinutes = summary?.maxCookingMinutes ?? null;
@@ -33,11 +40,7 @@ export const PlanningSettingsSummary = ({
 	const hasFallbackContent = fallbackEquipment.length > 0 || fallbackConstraints.length > 0;
 
 	return (
-		<Card.Root
-			bg="linear-gradient(135deg, rgba(249, 250, 251, 0.98), rgba(236, 253, 245, 0.92))"
-			borderColor="green.200"
-			variant="outline"
-		>
+		<Card.Root bg={summaryBackground} borderColor={summaryBorderColor} variant="outline">
 			<Card.Body gap="md">
 				<Flex align={{ base: 'stretch', md: 'start' }} justify="space-between" gap="md" wrap="wrap">
 					<VStack align="stretch" gap="xs">
@@ -51,7 +54,7 @@ export const PlanningSettingsSummary = ({
 					<Badge colorScheme="green" variant="solid">
 						器具 {hasStructuredSummary ? equipmentItems.length : fallbackEquipment.length} 件
 					</Badge>
-					<Badge colorScheme={maxCookingMinutes ? 'orange' : 'blackAlpha'} variant="subtle">
+					<Badge colorScheme={maxCookingMinutes ? 'orange' : 'gray'} variant="subtle">
 						{maxCookingMinutes ? `目安 ${maxCookingMinutes}分以内` : '時間制約なし'}
 					</Badge>
 					{dietaryRestrictions.length > 0 ? (

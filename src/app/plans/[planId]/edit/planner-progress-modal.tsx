@@ -1,6 +1,6 @@
 'use client';
 
-import { Box, Button, Flex, Modal, Text, VStack } from '@workspaces/ui';
+import { Box, Button, Flex, Modal, Text, useColorModeValue, VStack } from '@workspaces/ui';
 import type { RefObject } from 'react';
 import { AppSpinner } from '@/components/app-spinner';
 
@@ -25,6 +25,7 @@ export const PlannerProgressModal = ({
 	statusEndRef: RefObject<HTMLDivElement | null>;
 	onClose: () => void;
 }) => {
+	const overlayBackground = useColorModeValue('blackAlpha.400', 'blackAlpha.700');
 	const recentLogs = progressLogs.slice(-STATUS_DISPLAY_COUNT);
 	const seenLogs = new Map<string, number>();
 	const recentLogEntries = recentLogs.map((log) => {
@@ -51,7 +52,7 @@ export const PlannerProgressModal = ({
 				}
 			}}
 		>
-			<Modal.Overlay backdropFilter="blur(6px)" bg="blackAlpha.400" />
+			<Modal.Overlay backdropFilter="blur(6px)" bg={overlayBackground} />
 			<Modal.Content
 				maxH="72vh"
 				mt="8vh"

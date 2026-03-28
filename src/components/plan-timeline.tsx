@@ -1,13 +1,28 @@
 'use client';
 
-import { Badge, Box, Card, ClientOnly, Flex, Text, VStack } from '@workspaces/ui';
+import {
+	Badge,
+	Box,
+	Card,
+	ClientOnly,
+	Flex,
+	Text,
+	useColorModeValue,
+	VStack,
+} from '@workspaces/ui';
+import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
 	computeConflicts,
 	type PlanConflict,
 	type PlanResourceCapacity,
 } from '@/lib/plans/scheduler';
-import { buildPlanTimelineData, type PlanTimelineItemData } from '@/lib/plans/timeline';
+import {
+	buildPlanTimelineData,
+	DARK_PLAN_TIMELINE_PALETTE,
+	LIGHT_PLAN_TIMELINE_PALETTE,
+	type PlanTimelineItemData,
+} from '@/lib/plans/timeline';
 import type { PlanDocument } from '@/lib/plans/types';
 
 type PlanTimelineProps = {
@@ -143,7 +158,7 @@ const TimelineStatusBadges = ({
 		<Badge colorScheme="blue" variant="subtle">
 			計画 {totalMinutes} 分
 		</Badge>
-		<Badge colorScheme="blackAlpha" variant="subtle">
+		<Badge colorScheme="gray" variant="subtle">
 			横幅 {zoomPercent}%
 		</Badge>
 		{editable ? (
@@ -155,18 +170,22 @@ const TimelineStatusBadges = ({
 );
 
 const TimelineConflictAlert = ({ conflicts }: { conflicts: PlanConflict[] }) => {
+	const conflictAlertBackground = useColorModeValue('red.50', 'rgba(127, 29, 29, 0.24)');
+	const conflictAlertBorder = useColorModeValue('red.200', 'rgba(252, 165, 165, 0.3)');
+	const conflictAlertText = useColorModeValue('red.700', 'red.200');
+
 	if (conflicts.length === 0) {
 		return null;
 	}
 
 	return (
-		<Card.Root borderColor="red.200" bg="red.50" variant="outline">
+		<Card.Root bg={conflictAlertBackground} borderColor={conflictAlertBorder} variant="outline">
 			<Card.Body gap="xs">
-				<Text color="red.700" fontSize="sm" fontWeight="semibold">
+				<Text color={conflictAlertText} fontSize="sm" fontWeight="semibold">
 					リソース競合があります
 				</Text>
 				{conflicts.map((conflict) => (
-					<Text key={getConflictKey(conflict)} color="red.700" fontSize="sm">
+					<Text key={getConflictKey(conflict)} color={conflictAlertText} fontSize="sm">
 						{conflict.text}
 					</Text>
 				))}
@@ -384,9 +403,19 @@ const TimelineCanvas = ({
 };
 
 export const PlanTimeline = ({ editable = false, plan, recipeTitleById }: PlanTimelineProps) => {
+	const timelinePalette = useColorModeValue(
+		LIGHT_PLAN_TIMELINE_PALETTE,
+		DARK_PLAN_TIMELINE_PALETTE,
+	);
+	const conflictOverlayColor = useColorModeValue(
+		'color-mix(in srgb, var(--ui-colors-red-500, #ef4444) 38%, transparent)',
+		'color-mix(in srgb, var(--ui-colors-red-300, #fca5a5) 24%, transparent)',
+	);
+	const stepTextColor = useColorModeValue('#ffffff', '#f8fafc');
 	const [zoomPercent, setZoomPercent] = useState(MIN_ZOOM_PERCENT);
 	const { conflicts, items, marks, maxMinutes, totalMinutes } = useMemo<TimelineMetrics>(() => {
 		const { items, totalMinutes } = buildPlanTimelineData({
+			palette: timelinePalette,
 			plan,
 			recipeTitleById,
 		});
@@ -399,7 +428,15 @@ export const PlanTimeline = ({ editable = false, plan, recipeTitleById }: PlanTi
 			maxMinutes,
 			totalMinutes,
 		};
-	}, [plan, recipeTitleById]);
+	}, [plan, recipeTitleById, timelinePalette]);
+	const timelineCssVariables = useMemo(
+		() =>
+			({
+				'--plan-timeline-conflict-color': conflictOverlayColor,
+				'--plan-timeline-step-text-color': stepTextColor,
+			}) as CSSProperties,
+		[conflictOverlayColor, stepTextColor],
+	);
 	const handleWheel = useCallback((event: WheelEvent) => {
 		if (!event.ctrlKey) {
 			return;
@@ -413,7 +450,7 @@ export const PlanTimeline = ({ editable = false, plan, recipeTitleById }: PlanTi
 	}, []);
 
 	return (
-		<Card.Root variant="outline">
+		<Card.Root style={timelineCssVariables} variant="outline">
 			<Card.Body gap="md">
 				<Flex align="center" justify="space-between" gap="sm" wrap="wrap">
 					<VStack align="stretch" gap="xs">

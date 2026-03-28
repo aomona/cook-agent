@@ -116,7 +116,10 @@ body {
 	position: absolute;
 	inset-block: 0;
 	border-radius: 9999px;
-	background: color-mix(in srgb, #ef4444 38%, transparent);
+	background: var(
+		--plan-timeline-conflict-color,
+		color-mix(in srgb, var(--ui-colors-red-500, #ef4444) 38%, transparent)
+	);
 }
 
 .plan-timeline-rows {
@@ -152,7 +155,7 @@ body {
 	height: 2.6rem;
 	padding-inline: 0.75rem;
 	border-radius: 0.8rem;
-	color: #fff;
+	color: var(--plan-timeline-step-text-color, #fff);
 	overflow: hidden;
 }
 
