@@ -43,6 +43,13 @@
       "when": 1774637700252,
       "tag": "0005_rare_peter_quill",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1774680960994,
+      "tag": "0006_salty_maria_hill",
+      "breakpoints": true
     }
   ]
 }

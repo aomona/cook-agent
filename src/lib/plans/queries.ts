@@ -7,6 +7,7 @@ import { scalePlanMaterial } from '@/lib/plans/presentation';
 import {
 	normalizedRecipeSchema,
 	planDocumentSchema,
+	recipeMaterialChangeSchema,
 	recipeStepChangeSchema,
 } from '@/lib/plans/schema';
 import type {
@@ -16,6 +17,7 @@ import type {
 	PlanGenerationOptions,
 	PlanMaterial,
 	RecipeAdjustmentStatus,
+	RecipeMaterialChange,
 	RecipeStepChange,
 } from '@/lib/plans/types';
 import { parseUuid } from '@/lib/uuid';
@@ -51,7 +53,9 @@ export type PlanRecipeSnapshot = {
 	adjustedForServings: number | null;
 	adjustmentStatus: RecipeAdjustmentStatus;
 	adjustmentError: string | null;
+	adjustmentConfirmedAt: string | null;
 	baseServings: number | null;
+	materialChanges: RecipeMaterialChange[];
 	stepChanges: RecipeStepChange[];
 };
 
@@ -108,6 +112,12 @@ const parseStepChanges = (value: unknown): RecipeStepChange[] => {
 	const parsedStepChanges = recipeStepChangeSchema.array().safeParse(value ?? []);
 
 	return parsedStepChanges.success ? parsedStepChanges.data : [];
+};
+
+const parseMaterialChanges = (value: unknown): RecipeMaterialChange[] => {
+	const parsedMaterialChanges = recipeMaterialChangeSchema.array().safeParse(value ?? []);
+
+	return parsedMaterialChanges.success ? parsedMaterialChanges.data : [];
 };
 
 const getRecipeLabel = ({
@@ -232,10 +242,12 @@ export const getOwnedPlanEditorData = async (
 		.select({
 			adjustedForServings: planRecipeSources.adjustedForServings,
 			adjustedRecipe: planRecipeSources.adjustedRecipe,
+			adjustmentConfirmedAt: planRecipeSources.adjustmentConfirmedAt,
 			adjustmentError: planRecipeSources.adjustmentError,
 			adjustmentStatus: planRecipeSources.adjustmentStatus,
 			baseServingsOverride: planRecipeSources.baseServingsOverride,
 			id: recipeSources.id,
+			materialChanges: planRecipeSources.materialChanges,
 			sourceType: recipeSources.sourceType,
 			sourceUrl: recipeSources.sourceUrl,
 			rawContent: recipeSources.rawContent,
@@ -267,10 +279,12 @@ export const getOwnedPlanEditorData = async (
 		adjustedForServings: recipe.adjustedForServings,
 		adjustmentStatus: recipe.adjustmentStatus,
 		adjustmentError: recipe.adjustmentError,
+		adjustmentConfirmedAt: recipe.adjustmentConfirmedAt?.toISOString() ?? null,
 		baseServings:
 			recipe.baseServingsOverride ??
 			parseNormalizedRecipe(recipe.normalizedRecipe)?.servings ??
 			null,
+		materialChanges: parseMaterialChanges(recipe.materialChanges),
 		stepChanges: parseStepChanges(recipe.stepChanges),
 	}));
 
@@ -340,6 +354,7 @@ export const buildPlanGenerationInput = async ({
 		(recipe) =>
 			recipe.processingStatus !== 'completed' ||
 			!recipe.normalizedRecipe ||
+			!recipe.adjustmentConfirmedAt ||
 			recipe.adjustmentStatus === 'adjusting' ||
 			recipe.adjustmentStatus === 'action_required' ||
 			recipe.adjustmentStatus === 'needs_base_servings',

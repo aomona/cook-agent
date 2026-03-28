@@ -1,11 +1,22 @@
 'use client';
 
-import { Button, Flex, For, Heading, Text, useDisclosure, useNotice, VStack } from '@workspaces/ui';
+import {
+	Button,
+	Card,
+	Flex,
+	For,
+	Heading,
+	Text,
+	useDisclosure,
+	useNotice,
+	VStack,
+} from '@workspaces/ui';
 import NextLink from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CreatePlanData, CreateRecipeItem, RecipeInputMode } from '@/lib/create-session';
 import {
 	addRecipeToPlanAction,
+	confirmAdjustedRecipesAction,
 	deleteRecipeFromPlanAction,
 	retryRecipeAdjustmentAction,
 	updateRecipeBaseServingsAction,
@@ -24,6 +35,17 @@ const getErrorMessage = (error: unknown): string => {
 };
 
 const getCanProceed = (recipes: CreateRecipeItem[]): boolean =>
+	recipes.length > 0 &&
+	recipes.every(
+		(recipe) =>
+			recipe.processingStatus === 'completed' &&
+			recipe.adjustmentStatus === 'completed' &&
+			Boolean(recipe.adjustmentConfirmedAt) &&
+			!recipe.requiresServingsInput &&
+			Boolean(recipe.adjustedRecipe),
+	);
+
+const getReadyForReview = (recipes: CreateRecipeItem[]): boolean =>
 	recipes.length > 0 &&
 	recipes.every(
 		(recipe) =>
@@ -74,10 +96,18 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 	const [savingServingsRecipeIds, setSavingServingsRecipeIds] = useState<string[]>([]);
 	const [retryingAdjustmentRecipeIds, setRetryingAdjustmentRecipeIds] = useState<string[]>([]);
 	const [updatingRecipeIds, setUpdatingRecipeIds] = useState<string[]>([]);
+	const [confirmingAdjustments, setConfirmingAdjustments] = useState(false);
 	const processingRecipeIdsRef = useRef<Set<string>>(new Set());
 	const scheduledRecipeIdsRef = useRef<Set<string>>(new Set());
 	const adjustingRecipeIdsRef = useRef<Set<string>>(new Set());
 	const notice = useNotice();
+	const confirmedRecipeCount = plan.recipes.filter((recipe) => recipe.adjustmentConfirmedAt).length;
+	const readyForReview = getReadyForReview(plan.recipes);
+
+	useEffect(() => {
+		setPlan(initialPlan);
+		setServingsInputByRecipeId(getInitialServingsInputMap(initialPlan));
+	}, [initialPlan]);
 
 	const refreshPlan = useCallback(async (): Promise<void> => {
 		const response = await fetch(`/api/plans/${plan.id}`, {
@@ -196,10 +226,12 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 			adjustedRecipe: null,
 			baseServings: null,
 			adjustedForServings: null,
+			materialChanges: [],
 			stepChanges: [],
 			adjustmentStatus: 'idle',
 			adjustmentAttemptCount: 0,
 			adjustmentError: null,
+			adjustmentConfirmedAt: null,
 			processingStatus: 'queued',
 			processingError: null,
 			requiresServingsInput: false,
@@ -249,8 +281,10 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 								adjustedForServings: null,
 								adjustedRecipe: null,
 								adjustmentAttemptCount: 0,
+								adjustmentConfirmedAt: null,
 								adjustmentError: null,
 								adjustmentStatus: 'idle',
+								materialChanges: [],
 								normalizedRecipe: null,
 								processingStatus: 'failed',
 								processingError: getErrorMessage(error),
@@ -270,8 +304,16 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 				recipe.id === recipeId
 					? {
 							...recipe,
+							adjustedForServings: null,
+							adjustedRecipe: null,
+							adjustmentAttemptCount: 0,
+							adjustmentConfirmedAt: null,
+							adjustmentError: null,
+							adjustmentStatus: 'idle',
+							materialChanges: [],
 							processingStatus: 'queued',
 							processingError: null,
+							stepChanges: [],
 						}
 					: recipe,
 			),
@@ -344,8 +386,10 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 							adjustedForServings: null,
 							adjustedRecipe: null,
 							adjustmentAttemptCount: 0,
+							adjustmentConfirmedAt: null,
 							adjustmentError: null,
 							adjustmentStatus: 'idle',
+							materialChanges: [],
 							stepChanges: [],
 						}
 					: recipe,
@@ -404,9 +448,11 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 							adjustedForServings: null,
 							adjustedRecipe: null,
 							adjustmentAttemptCount: 0,
+							adjustmentConfirmedAt: null,
 							adjustmentError: null,
 							adjustmentStatus: 'idle',
 							label: value,
+							materialChanges: [],
 							processingError: null,
 							processingStatus: 'queued',
 							requiresServingsInput: false,
@@ -441,6 +487,30 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 			setUpdatingRecipeIds((currentIds) =>
 				currentIds.filter((currentId) => currentId !== editingRecipe.id),
 			);
+		}
+	};
+
+	const handleConfirmAdjustments = async (): Promise<void> => {
+		setConfirmingAdjustments(true);
+
+		try {
+			await confirmAdjustedRecipesAction({
+				planId: plan.id,
+			});
+			await refreshPlan();
+			notice({
+				description: 'この最適化済みレシピを工程生成の前提として使います。',
+				status: 'success',
+				title: '最適化結果を確定しました',
+			});
+		} catch (error) {
+			notice({
+				description: getErrorMessage(error),
+				status: 'error',
+				title: '最適化結果を確定できませんでした',
+			});
+		} finally {
+			setConfirmingAdjustments(false);
 		}
 	};
 
@@ -491,8 +561,10 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 				</Flex>
 
 				<VStack align="stretch" gap="xs">
-					<Heading size="xl">レシピを登録</Heading>
-					<Text color="fg.subtle">献立に使うレシピ一覧</Text>
+					<Heading size="xl">レシピを登録して最適化</Heading>
+					<Text color="fg.subtle">
+						人数と設定を前提に、各レシピを工程生成しやすい形へ先に最適化します。
+					</Text>
 					<Flex align={{ base: 'start', md: 'center' }} gap="sm" wrap="wrap">
 						<Text color="fg.subtle" fontSize="sm">
 							人数: {plan.requestedServings}人分
@@ -502,6 +574,33 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 						</Button>
 					</Flex>
 				</VStack>
+
+				{readyForReview && !plan.canProceed ? (
+					<Card.Root borderColor="green.300" variant="outline">
+						<Card.Body gap="sm">
+							<Heading size="md">最適化結果を確認してください</Heading>
+							<Text color="fg.subtle" fontSize="sm">
+								各レシピの詳細から材料差分と手順の変更点を確認できます。問題なければ一括で確定して、次の工程生成に進みます。
+							</Text>
+							<Flex
+								align={{ base: 'stretch', md: 'center' }}
+								direction={{ base: 'column', md: 'row' }}
+								gap="sm"
+								justify="space-between"
+							>
+								<Text color="fg.subtle" fontSize="sm">
+									確認済み {confirmedRecipeCount} / {plan.recipes.length} 件
+								</Text>
+								<Button
+									loading={confirmingAdjustments}
+									onClick={() => void handleConfirmAdjustments()}
+								>
+									この最適化結果で確定する
+								</Button>
+							</Flex>
+						</Card.Body>
+					</Card.Root>
+				) : null}
 
 				<VStack align="stretch" gap="md">
 					<For each={plan.recipes}>
@@ -549,15 +648,15 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 					<VStack align={{ base: 'stretch', md: 'end' }} gap="xs">
 						{plan.canProceed ? (
 							<Button as={NextLink} href={`/plans/${plan.id}/edit`} variant="solid">
-								planに進む
+								工程作成へ進む
 							</Button>
 						) : (
 							<Button disabled variant="solid">
-								planに進む
+								工程作成へ進む
 							</Button>
 						)}
 						<Text color="fg.subtle" fontSize="sm">
-							抽出と人数向けの手順調整が完了すると plan へ進めます。
+							抽出とレシピ最適化の確認が完了すると、工程作成に進めます。
 						</Text>
 					</VStack>
 				</Flex>

@@ -3,7 +3,8 @@ import 'server-only';
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { planRecipeSources, plans, recipeSources } from '@/db/schema';
-import type { NormalizedRecipe, RecipeStepChange } from '@/lib/plans/types';
+import { getUserPlanningSettingsState } from '@/lib/planning-settings-queries';
+import type { NormalizedRecipe, RecipeMaterialChange, RecipeStepChange } from '@/lib/plans/types';
 import { adaptRecipeServings } from '@/lib/recipes/adapt-recipe-servings';
 
 const getErrorMessage = (error: unknown): string => {
@@ -11,7 +12,7 @@ const getErrorMessage = (error: unknown): string => {
 		return error.message;
 	}
 
-	return '人数に合わせた手順の調整に失敗しました。';
+	return 'レシピの最適化に失敗しました。';
 };
 
 const getBaseServings = ({
@@ -27,14 +28,18 @@ const clearAdjustmentColumns: {
 	adjustedForServings: null;
 	adjustedRecipe: null;
 	adjustmentAttemptCount: number;
+	adjustmentConfirmedAt: null;
 	adjustmentError: null;
+	materialChanges: RecipeMaterialChange[];
 	stepChanges: RecipeStepChange[];
 } = {
 	adjustedAt: null,
 	adjustedForServings: null,
 	adjustedRecipe: null,
 	adjustmentAttemptCount: 0,
+	adjustmentConfirmedAt: null,
 	adjustmentError: null,
+	materialChanges: [],
 	stepChanges: [],
 };
 
@@ -58,6 +63,7 @@ export const syncAdjustedRecipeForPlan = async ({
 			planStatus: plans.status,
 			processingStatus: recipeSources.processingStatus,
 			requestedServings: plans.requestedServings,
+			userId: plans.userId,
 		})
 		.from(planRecipeSources)
 		.innerJoin(plans, eq(planRecipeSources.planId, plans.id))
@@ -138,6 +144,8 @@ export const syncAdjustedRecipeForPlan = async ({
 		return;
 	}
 
+	const planningSettingsState = await getUserPlanningSettingsState(linkedRecipe.userId);
+
 	await db
 		.update(planRecipeSources)
 		.set({
@@ -166,8 +174,9 @@ export const syncAdjustedRecipeForPlan = async ({
 			);
 
 		try {
-			const { adjustedRecipe, stepChanges } = await adaptRecipeServings({
+			const { adjustedRecipe, materialChanges, stepChanges } = await adaptRecipeServings({
 				baseServings,
+				planningSettings: planningSettingsState.settings,
 				recipe: linkedRecipe.normalizedRecipe,
 				targetServings: linkedRecipe.requestedServings,
 			});
@@ -179,8 +188,10 @@ export const syncAdjustedRecipeForPlan = async ({
 					adjustedForServings: linkedRecipe.requestedServings,
 					adjustedRecipe,
 					adjustmentAttemptCount: attempt,
+					adjustmentConfirmedAt: null,
 					adjustmentError: null,
 					adjustmentStatus: 'completed',
+					materialChanges,
 					stepChanges,
 				})
 				.where(
@@ -244,5 +255,62 @@ export const syncAdjustedRecipesForLinkedSource = async (recipeSourceId: string)
 			planId: planLink.planId,
 			recipeSourceId,
 		});
+	}
+};
+
+export const confirmAdjustedRecipesForPlan = async ({
+	planId,
+	userId,
+}: {
+	planId: string;
+	userId: string;
+}): Promise<void> => {
+	const recipeLinks = await db
+		.select({
+			adjustmentStatus: planRecipeSources.adjustmentStatus,
+			recipeSourceId: planRecipeSources.recipeSourceId,
+		})
+		.from(planRecipeSources)
+		.innerJoin(plans, eq(planRecipeSources.planId, plans.id))
+		.where(
+			and(
+				eq(planRecipeSources.planId, planId),
+				eq(plans.userId, userId),
+				eq(plans.status, 'draft'),
+			),
+		);
+
+	if (recipeLinks.length === 0) {
+		throw new Error('レシピがありません。');
+	}
+
+	if (recipeLinks.some((recipe) => recipe.adjustmentStatus !== 'completed')) {
+		throw new Error('レシピの最適化が完了していません。');
+	}
+
+	await db
+		.update(planRecipeSources)
+		.set({
+			adjustmentConfirmedAt: new Date(),
+		})
+		.where(eq(planRecipeSources.planId, planId));
+};
+
+export const invalidateAdjustedRecipesForUser = async (userId: string): Promise<void> => {
+	const draftPlans = await db
+		.select({
+			id: plans.id,
+		})
+		.from(plans)
+		.where(and(eq(plans.userId, userId), eq(plans.status, 'draft')));
+
+	for (const draftPlan of draftPlans) {
+		await db
+			.update(planRecipeSources)
+			.set({
+				...clearAdjustmentColumns,
+				adjustmentStatus: 'idle',
+			})
+			.where(eq(planRecipeSources.planId, draftPlan.id));
 	}
 };

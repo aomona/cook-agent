@@ -3,10 +3,15 @@ import { headers } from 'next/headers';
 import { db } from '@/db';
 import { planRecipeSources, plans, recipeSources } from '@/db/schema';
 import { auth } from '@/lib/auth';
-import { normalizedRecipeSchema, recipeStepChangeSchema } from '@/lib/plans/schema';
+import {
+	normalizedRecipeSchema,
+	recipeMaterialChangeSchema,
+	recipeStepChangeSchema,
+} from '@/lib/plans/schema';
 import type {
 	NormalizedRecipe,
 	RecipeAdjustmentStatus,
+	RecipeMaterialChange,
 	RecipeProcessingStatus,
 	RecipeSourceRawContent,
 	RecipeStepChange,
@@ -26,10 +31,12 @@ export type CreateRecipeItem = {
 	adjustedRecipe: NormalizedRecipe | null;
 	baseServings: number | null;
 	adjustedForServings: number | null;
+	materialChanges: RecipeMaterialChange[];
 	stepChanges: RecipeStepChange[];
 	adjustmentStatus: RecipeAdjustmentStatus;
 	adjustmentAttemptCount: number;
 	adjustmentError: string | null;
+	adjustmentConfirmedAt: string | null;
 	processingStatus: RecipeProcessingStatus;
 	processingError: string | null;
 	requiresServingsInput: boolean;
@@ -54,6 +61,26 @@ type CookieReader = {
 	get(name: string): { value: string } | undefined;
 };
 
+const clearAdjustedRecipeState: {
+	adjustedAt: null;
+	adjustedForServings: null;
+	adjustedRecipe: null;
+	adjustmentAttemptCount: number;
+	adjustmentConfirmedAt: null;
+	adjustmentError: null;
+	materialChanges: RecipeMaterialChange[];
+	stepChanges: RecipeStepChange[];
+} = {
+	adjustedAt: null,
+	adjustedForServings: null,
+	adjustedRecipe: null,
+	adjustmentAttemptCount: 0,
+	adjustmentConfirmedAt: null,
+	adjustmentError: null,
+	materialChanges: [],
+	stepChanges: [],
+};
+
 export const getRecipeInputMode = (sourceType: 'url' | 'manual'): RecipeInputMode =>
 	sourceType === 'url' ? 'url' : 'text';
 
@@ -67,6 +94,12 @@ const parseStepChanges = (value: unknown): RecipeStepChange[] => {
 	const parsedStepChanges = recipeStepChangeSchema.array().safeParse(value ?? []);
 
 	return parsedStepChanges.success ? parsedStepChanges.data : [];
+};
+
+const parseMaterialChanges = (value: unknown): RecipeMaterialChange[] => {
+	const parsedMaterialChanges = recipeMaterialChangeSchema.array().safeParse(value ?? []);
+
+	return parsedMaterialChanges.success ? parsedMaterialChanges.data : [];
 };
 
 const getBaseServings = ({
@@ -101,6 +134,7 @@ const getCanProceed = ({
 		(recipe) =>
 			recipe.processingStatus === 'completed' &&
 			recipe.adjustmentStatus === 'completed' &&
+			Boolean(recipe.adjustmentConfirmedAt) &&
 			!recipe.requiresServingsInput &&
 			Boolean(recipe.adjustedRecipe),
 	);
@@ -135,11 +169,13 @@ const mapCreateRecipeItem = ({
 	adjustedForServings,
 	adjustedRecipe,
 	adjustmentAttemptCount,
+	adjustmentConfirmedAt,
 	adjustmentError,
 	adjustmentStatus,
 	baseServingsOverride,
 	createdAt,
 	id,
+	materialChanges,
 	normalizedRecipe,
 	processingError,
 	processingStatus,
@@ -154,11 +190,13 @@ const mapCreateRecipeItem = ({
 	adjustedForServings: number | null;
 	adjustedRecipe: unknown;
 	adjustmentAttemptCount: number;
+	adjustmentConfirmedAt: Date | null;
 	adjustmentError: string | null;
 	adjustmentStatus: RecipeAdjustmentStatus;
 	baseServingsOverride: number | null;
 	createdAt: Date;
 	id: string;
+	materialChanges: unknown;
 	normalizedRecipe: unknown;
 	processingError: string | null;
 	processingStatus: RecipeProcessingStatus;
@@ -196,10 +234,12 @@ const mapCreateRecipeItem = ({
 		adjustedRecipe: parsedAdjustedRecipe,
 		baseServings,
 		adjustedForServings,
+		materialChanges: parseMaterialChanges(materialChanges),
 		stepChanges: parseStepChanges(stepChanges),
 		adjustmentStatus,
 		adjustmentAttemptCount,
 		adjustmentError,
+		adjustmentConfirmedAt: adjustmentConfirmedAt?.toISOString() ?? null,
 		processingStatus,
 		processingError,
 		requiresServingsInput: getRequiresServingsInput({
@@ -283,10 +323,12 @@ export const getCreatePlanData = async (
 			adjustedForServings: planRecipeSources.adjustedForServings,
 			adjustedRecipe: planRecipeSources.adjustedRecipe,
 			adjustmentAttemptCount: planRecipeSources.adjustmentAttemptCount,
+			adjustmentConfirmedAt: planRecipeSources.adjustmentConfirmedAt,
 			adjustmentError: planRecipeSources.adjustmentError,
 			adjustmentStatus: planRecipeSources.adjustmentStatus,
 			baseServingsOverride: planRecipeSources.baseServingsOverride,
 			id: recipeSources.id,
+			materialChanges: planRecipeSources.materialChanges,
 			sourceType: recipeSources.sourceType,
 			sourceUrl: recipeSources.sourceUrl,
 			rawContent: recipeSources.rawContent,
@@ -333,11 +375,13 @@ const getLinkedCreateRecipeItem = async ({
 			adjustedForServings: planRecipeSources.adjustedForServings,
 			adjustedRecipe: planRecipeSources.adjustedRecipe,
 			adjustmentAttemptCount: planRecipeSources.adjustmentAttemptCount,
+			adjustmentConfirmedAt: planRecipeSources.adjustmentConfirmedAt,
 			adjustmentError: planRecipeSources.adjustmentError,
 			adjustmentStatus: planRecipeSources.adjustmentStatus,
 			baseServingsOverride: planRecipeSources.baseServingsOverride,
 			createdAt: recipeSources.createdAt,
 			id: recipeSources.id,
+			materialChanges: planRecipeSources.materialChanges,
 			normalizedRecipe: recipeSources.normalizedRecipe,
 			processingError: recipeSources.processingError,
 			processingStatus: recipeSources.processingStatus,
@@ -493,14 +537,9 @@ export const updateRecipeBaseServingsForPlan = async ({
 	await db
 		.update(planRecipeSources)
 		.set({
-			adjustedAt: null,
-			adjustedForServings: null,
-			adjustedRecipe: null,
-			adjustmentAttemptCount: 0,
-			adjustmentError: null,
+			...clearAdjustedRecipeState,
 			adjustmentStatus: 'idle',
 			baseServingsOverride: servings,
-			stepChanges: [],
 		})
 		.where(
 			and(
@@ -553,13 +592,8 @@ export const updateRequestedServingsForPlan = async ({
 	await db
 		.update(planRecipeSources)
 		.set({
-			adjustedAt: null,
-			adjustedForServings: null,
-			adjustedRecipe: null,
-			adjustmentAttemptCount: 0,
-			adjustmentError: null,
+			...clearAdjustedRecipeState,
 			adjustmentStatus: 'idle',
-			stepChanges: [],
 		})
 		.where(eq(planRecipeSources.planId, planId));
 };
@@ -586,13 +620,8 @@ export const retryRecipeAdjustmentForPlan = async ({
 	await db
 		.update(planRecipeSources)
 		.set({
-			adjustedAt: null,
-			adjustedForServings: null,
-			adjustedRecipe: null,
-			adjustmentAttemptCount: 0,
-			adjustmentError: null,
+			...clearAdjustedRecipeState,
 			adjustmentStatus: 'idle',
-			stepChanges: [],
 		})
 		.where(
 			and(
@@ -673,14 +702,9 @@ export const updateRecipeSourceInputForPlan = async ({
 	await db
 		.update(planRecipeSources)
 		.set({
-			adjustedAt: null,
-			adjustedForServings: null,
-			adjustedRecipe: null,
-			adjustmentAttemptCount: 0,
-			adjustmentError: null,
+			...clearAdjustedRecipeState,
 			adjustmentStatus: 'idle',
 			baseServingsOverride: null,
-			stepChanges: [],
 		})
 		.where(
 			and(

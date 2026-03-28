@@ -85,6 +85,7 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 			recipe.title ?? recipe.normalizedRecipe?.title ?? recipe.label,
 		]),
 	);
+	const hasUnconfirmedRecipes = initialPlan.recipes.some((recipe) => !recipe.adjustmentConfirmedAt);
 
 	const runPlannerStream = async ({
 		body,
@@ -204,6 +205,15 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 			return;
 		}
 
+		if (hasUnconfirmedRecipes) {
+			notice({
+				description: 'create フローでレシピ最適化を確認してから工程を生成してください。',
+				status: 'error',
+				title: 'まだ生成できません',
+			});
+			return;
+		}
+
 		await runPlannerStream({
 			body: {
 				requestedServings: parsedServings,
@@ -227,6 +237,15 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 				description: '先に工程を生成してください。',
 				status: 'error',
 				title: '改善できません',
+			});
+			return;
+		}
+
+		if (hasUnconfirmedRecipes) {
+			notice({
+				description: 'create フローでレシピ最適化を確認してから工程を改善してください。',
+				status: 'error',
+				title: 'まだ改善できません',
 			});
 			return;
 		}
@@ -311,8 +330,19 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 							/>
 						</Flex>
 
+						{hasUnconfirmedRecipes ? (
+							<Text color="orange.500" fontSize="sm">
+								この plan の前提レシピはまだ最適化結果の確認が終わっていません。`/create`
+								に戻って確認すると工程生成できます。
+							</Text>
+						) : null}
+
 						<Flex justify="end">
-							<Button loading={isGenerating} onClick={() => void handleGenerate()}>
+							<Button
+								disabled={hasUnconfirmedRecipes}
+								loading={isGenerating}
+								onClick={() => void handleGenerate()}
+							>
 								{generatedPlan ? '工程を再生成' : '工程を生成'}
 							</Button>
 						</Flex>
@@ -389,7 +419,11 @@ export const PlanEditPageClient = ({ initialPlan }: { initialPlan: PlanEditorDat
 							/>
 
 							<Flex justify="end">
-								<Button loading={isGenerating} onClick={() => void handleImprove()}>
+								<Button
+									disabled={hasUnconfirmedRecipes}
+									loading={isGenerating}
+									onClick={() => void handleImprove()}
+								>
 									この工程を改善する
 								</Button>
 							</Flex>

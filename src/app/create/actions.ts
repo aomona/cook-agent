@@ -16,6 +16,7 @@ import {
 	updateRequestedServingsForPlan,
 } from '@/lib/create-session';
 import {
+	confirmAdjustedRecipesForPlan,
 	syncAdjustedRecipeForPlan,
 	syncAdjustedRecipesForPlan,
 } from '@/lib/recipes/adjust-plan-recipes';
@@ -53,6 +54,10 @@ const updateRequestedServingsInputSchema = z.object({
 const retryRecipeAdjustmentInputSchema = z.object({
 	planId: z.uuid(),
 	recipeId: z.uuid(),
+});
+
+const confirmAdjustedRecipesInputSchema = z.object({
+	planId: z.uuid(),
 });
 
 const updateRecipeInputSchema = z.discriminatedUnion('type', [
@@ -217,6 +222,24 @@ export const retryRecipeAdjustmentAction = async ({
 			planId: payload.planId,
 			recipeSourceId: payload.recipeId,
 		});
+	});
+
+	revalidatePlanRoutes(payload.planId);
+};
+
+export const confirmAdjustedRecipesAction = async ({
+	planId,
+}: {
+	planId: string;
+}): Promise<void> => {
+	const actor = await requireRequestActor();
+	const payload = confirmAdjustedRecipesInputSchema.parse({
+		planId,
+	});
+
+	await confirmAdjustedRecipesForPlan({
+		planId: payload.planId,
+		userId: actor.userId,
 	});
 
 	revalidatePlanRoutes(payload.planId);

@@ -19,6 +19,7 @@ import type {
 	PlanDocument,
 	PlanPatch,
 	RecipeAdjustmentStatus,
+	RecipeMaterialChange,
 	RecipeProcessingStatus,
 	RecipeSourceRawContent,
 	RecipeStepChange,
@@ -131,7 +132,11 @@ export const planRecipeSources = pgTable(
 			.default('idle'),
 		adjustmentAttemptCount: integer('adjustment_attempt_count').notNull().default(0),
 		adjustmentError: text('adjustment_error'),
+		materialChanges: jsonb('material_changes')
+			.$type<RecipeMaterialChange[]>()
+			.default(sql`'[]'::jsonb`),
 		stepChanges: jsonb('step_changes').$type<RecipeStepChange[]>().default(sql`'[]'::jsonb`),
+		adjustmentConfirmedAt: timestamp('adjustment_confirmed_at', { withTimezone: true }),
 		adjustedAt: timestamp('adjusted_at', { withTimezone: true }),
 		...timestamps,
 	},

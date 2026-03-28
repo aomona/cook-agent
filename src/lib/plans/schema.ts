@@ -13,6 +13,8 @@ import type {
 	PlanStepResourceRequirements,
 	PlanStepTimeline,
 	PlanTimer,
+	RecipeMaterialChange,
+	RecipeMaterialChangeType,
 	RecipeStepChange,
 	RecipeStepChangeConfidence,
 	RecipeStepChangeType,
@@ -31,6 +33,14 @@ const recipeStepChangeTypeValues = [
 	'sequence',
 	'safety',
 	'wording',
+] as const;
+const recipeMaterialChangeTypeValues = [
+	'scale',
+	'substitute',
+	'add',
+	'remove',
+	'merge',
+	'split',
 ] as const;
 const recipeStepChangeConfidenceValues = ['low', 'medium', 'high'] as const;
 
@@ -123,6 +133,18 @@ export const recipeStepChangeSchema = z.object({
 		recipeStepChangeConfidenceValues,
 	) satisfies z.ZodType<RecipeStepChangeConfidence>,
 }) satisfies z.ZodType<RecipeStepChange>;
+
+export const recipeMaterialChangeSchema = z.object({
+	changeType: z.enum(recipeMaterialChangeTypeValues) satisfies z.ZodType<RecipeMaterialChangeType>,
+	ingredientId: nullableOptional(z.string().trim().min(1).max(120)),
+	ingredientName: z.string().trim().min(1).max(160),
+	nextIngredientId: nullableOptional(z.string().trim().min(1).max(120)),
+	nextIngredientName: nullableOptional(z.string().trim().min(1).max(160)),
+	reason: z.string().trim().min(1).max(240),
+	confidence: z.enum(
+		recipeStepChangeConfidenceValues,
+	) satisfies z.ZodType<RecipeStepChangeConfidence>,
+}) satisfies z.ZodType<RecipeMaterialChange>;
 
 export const planMetadataSchema = z.object({
 	availableEquipment: z.array(z.string().trim().min(1).max(80)).max(30),

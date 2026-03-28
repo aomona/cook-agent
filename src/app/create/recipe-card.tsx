@@ -114,8 +114,13 @@ export const RecipeCard = ({
 					{recipe.adjustedRecipe && recipe.adjustedForServings ? (
 						<Flex align="center" gap="sm" wrap="wrap">
 							<Badge colorScheme="green" variant="subtle">
-								{recipe.adjustedForServings}人分に変換済み
+								{recipe.adjustedForServings}人分向けに最適化済み
 							</Badge>
+							{recipe.materialChanges.length > 0 ? (
+								<Badge colorScheme="orange" variant="subtle">
+									材料変更 {recipe.materialChanges.length} 件
+								</Badge>
+							) : null}
 							{recipe.stepChanges.length > 0 ? (
 								<Badge colorScheme="gray" variant="subtle">
 									変更点 {recipe.stepChanges.length} 件
@@ -161,10 +166,23 @@ export const RecipeCard = ({
 					) : null}
 
 					{recipe.processingStatus === 'completed' &&
+					recipe.adjustmentStatus === 'completed' &&
+					!recipe.adjustmentConfirmedAt ? (
+						<Card.Root bg="bg.subtle" variant="outline">
+							<Card.Body gap="sm">
+								<Text fontWeight="medium">最適化結果を確認してください</Text>
+								<Text color="fg.subtle" fontSize="sm">
+									このレシピの材料と手順は、人数と設定に合わせて更新されています。詳細を開いて内容を確認できます。
+								</Text>
+							</Card.Body>
+						</Card.Root>
+					) : null}
+
+					{recipe.processingStatus === 'completed' &&
 					recipe.adjustmentStatus === 'action_required' ? (
 						<Card.Root bg="bg.subtle" variant="outline">
 							<Card.Body gap="sm">
-								<Text fontWeight="medium">人数に合わせた手順調整で確認が必要です</Text>
+								<Text fontWeight="medium">レシピ最適化で確認が必要です</Text>
 								<Text color="fg.subtle" fontSize="sm">
 									{recipe.adjustmentError ?? 'レシピを変更するか、もう一度試行してください。'}
 								</Text>

@@ -23,8 +23,20 @@ export const RecipeStatus = ({
 	recipe: CreateRecipeItem;
 	onRetry: (recipeId: string) => void;
 }) => {
+	if (
+		recipe.processingStatus === 'completed' &&
+		recipe.adjustmentStatus === 'completed' &&
+		recipe.adjustmentConfirmedAt
+	) {
+		return <Status value="success">最適化確認済み</Status>;
+	}
+
 	if (recipe.processingStatus === 'completed' && recipe.adjustmentStatus === 'completed') {
-		return <Status value="success">人数反映済み</Status>;
+		return (
+			<Text color="fg.subtle" fontSize="sm">
+				最適化結果の確認待ち
+			</Text>
+		);
 	}
 
 	if (recipe.processingStatus === 'failed') {
@@ -49,14 +61,14 @@ export const RecipeStatus = ({
 	}
 
 	if (recipe.processingStatus === 'completed' && recipe.adjustmentStatus === 'action_required') {
-		return <Status value="error">人数反映に要対応</Status>;
+		return <Status value="error">最適化に要対応</Status>;
 	}
 
 	if (recipe.processingStatus === 'completed' && recipe.adjustmentStatus === 'adjusting') {
 		return (
 			<Flex align="center" color="fg.subtle" gap="sm">
 				<AppSpinner />
-				<Text fontSize="sm">人数に合わせて手順を調整中...</Text>
+				<Text fontSize="sm">レシピを最適化中...</Text>
 			</Flex>
 		);
 	}
@@ -65,7 +77,7 @@ export const RecipeStatus = ({
 		return (
 			<Flex align="center" color="fg.subtle" gap="sm">
 				<AppSpinner />
-				<Text fontSize="sm">人数反映を準備中...</Text>
+				<Text fontSize="sm">最適化を準備中...</Text>
 			</Flex>
 		);
 	}

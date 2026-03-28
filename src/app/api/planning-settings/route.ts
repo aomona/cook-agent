@@ -6,6 +6,7 @@ import {
 	getUserPlanningSettingsState,
 	saveUserPlanningSettings,
 } from '@/lib/planning-settings-queries';
+import { invalidateAdjustedRecipesForUser } from '@/lib/recipes/adjust-plan-recipes';
 
 const planningSettingsRequestSchema = z.object({
 	settings: planningSettingsSchema,
@@ -38,6 +39,7 @@ export async function PUT(request: Request) {
 			settings,
 			userId: actor.userId,
 		});
+		await invalidateAdjustedRecipesForUser(actor.userId);
 
 		return Response.json(payload);
 	} catch (error) {

@@ -16,6 +16,7 @@ import { formatIngredientLine, getRecipeProcessingLabel } from '@/lib/plans/pres
 import type {
 	NormalizedRecipe,
 	RecipeAdjustmentStatus,
+	RecipeMaterialChange,
 	RecipeProcessingStatus,
 	RecipeStepChange,
 } from '@/lib/plans/types';
@@ -33,11 +34,55 @@ export type RecipeDetailItem = {
 	baseServings?: number | null;
 	adjustmentStatus?: RecipeAdjustmentStatus;
 	adjustmentError?: string | null;
+	adjustmentConfirmedAt?: string | null;
+	materialChanges?: RecipeMaterialChange[];
 	stepChanges?: RecipeStepChange[];
 };
 
 const getRecipeTitle = (recipe: RecipeDetailItem): string =>
 	recipe.title ?? recipe.adjustedRecipe?.title ?? recipe.normalizedRecipe?.title ?? recipe.label;
+
+const getStepChangeLabel = (value: RecipeStepChange['changeType']): string => {
+	switch (value) {
+		case 'batching':
+			return '分割';
+		case 'equipment':
+			return '器具';
+		case 'heat':
+			return '火加減';
+		case 'quantity':
+			return '分量';
+		case 'safety':
+			return '安全';
+		case 'sequence':
+			return '順序';
+		case 'time':
+			return '時間';
+		case 'wording':
+			return '表現';
+		default:
+			return value;
+	}
+};
+
+const getMaterialChangeLabel = (value: RecipeMaterialChange['changeType']): string => {
+	switch (value) {
+		case 'add':
+			return '追加';
+		case 'merge':
+			return '統合';
+		case 'remove':
+			return '削除';
+		case 'scale':
+			return '分量調整';
+		case 'split':
+			return '分割';
+		case 'substitute':
+			return '置換';
+		default:
+			return value;
+	}
+};
 
 const RecipeNormalizedSection = ({
 	heading,
@@ -111,7 +156,12 @@ export const RecipeSourceDetailModal = ({
 							</Badge>
 							{recipe.adjustedForServings ? (
 								<Badge colorScheme="green" variant="subtle">
-									{recipe.adjustedForServings}人分に調整済み
+									{recipe.adjustedForServings}人分向けに最適化済み
+								</Badge>
+							) : null}
+							{recipe.adjustmentConfirmedAt ? (
+								<Badge colorScheme="blue" variant="subtle">
+									確認済み
 								</Badge>
 							) : null}
 						</Flex>
@@ -155,9 +205,28 @@ export const RecipeSourceDetailModal = ({
 							<>
 								{recipe.adjustedRecipe ? (
 									<RecipeNormalizedSection
-										heading="人数反映後のレシピ"
+										heading="最適化後のレシピ"
 										recipe={recipe.adjustedRecipe}
 									/>
+								) : null}
+
+								{recipe.materialChanges && recipe.materialChanges.length > 0 ? (
+									<Card.Root variant="outline">
+										<Card.Body gap="xs">
+											<Heading size="sm">変更された材料</Heading>
+											{recipe.materialChanges.map((change) => (
+												<Text
+													key={`${change.changeType}-${change.ingredientId ?? 'new'}-${change.nextIngredientId ?? 'same'}-${change.reason}`}
+													color="fg.subtle"
+													fontSize="sm"
+												>
+													{getMaterialChangeLabel(change.changeType)}: {change.ingredientName}
+													{change.nextIngredientName ? ` -> ${change.nextIngredientName}` : ''} -{' '}
+													{change.reason}
+												</Text>
+											))}
+										</Card.Body>
+									</Card.Root>
 								) : null}
 
 								{recipe.stepChanges && recipe.stepChanges.length > 0 ? (
@@ -170,7 +239,8 @@ export const RecipeSourceDetailModal = ({
 													color="fg.subtle"
 													fontSize="sm"
 												>
-													STEP {change.stepId}: {change.changeType} - {change.reason}
+													STEP {change.stepId}: {getStepChangeLabel(change.changeType)} -{' '}
+													{change.reason}
 												</Text>
 											))}
 										</Card.Body>

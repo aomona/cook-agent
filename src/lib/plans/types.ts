@@ -89,6 +89,24 @@ export type RecipeStepChange = {
 	confidence: RecipeStepChangeConfidence;
 };
 
+export type RecipeMaterialChangeType =
+	| 'scale'
+	| 'substitute'
+	| 'add'
+	| 'remove'
+	| 'merge'
+	| 'split';
+
+export type RecipeMaterialChange = {
+	changeType: RecipeMaterialChangeType;
+	ingredientId?: string | null;
+	ingredientName: string;
+	nextIngredientId?: string | null;
+	nextIngredientName?: string | null;
+	reason: string;
+	confidence: RecipeStepChangeConfidence;
+};
+
 export type PlanMaterial = {
 	id: string;
 	name: string;
