@@ -13,6 +13,7 @@ import type {
 	PlanStepResourceRequirements,
 	PlanStepTimeline,
 	PlanTimer,
+	RecipeIngredientDecision,
 	RecipeMaterialChange,
 	RecipeMaterialChangeType,
 	RecipeStepChange,
@@ -35,6 +36,7 @@ const recipeStepChangeTypeValues = [
 	'wording',
 ] as const;
 const recipeMaterialChangeTypeValues = [
+	'keep',
 	'scale',
 	'substitute',
 	'add',
@@ -145,6 +147,18 @@ export const recipeMaterialChangeSchema = z.object({
 		recipeStepChangeConfidenceValues,
 	) satisfies z.ZodType<RecipeStepChangeConfidence>,
 }) satisfies z.ZodType<RecipeMaterialChange>;
+
+export const recipeIngredientDecisionSchema = z.object({
+	ingredientId: nullableOptional(z.string().trim().min(1).max(120)),
+	ingredientName: z.string().trim().min(1).max(160),
+	needsChange: z.boolean(),
+	changeType: z.enum(recipeMaterialChangeTypeValues) satisfies z.ZodType<RecipeMaterialChangeType>,
+	reason: z.string().trim().min(1).max(240),
+	confidence: z.enum(
+		recipeStepChangeConfidenceValues,
+	) satisfies z.ZodType<RecipeStepChangeConfidence>,
+	nextIngredientIds: nullableOptional(z.array(z.string().trim().min(1).max(120)).max(12)),
+}) satisfies z.ZodType<RecipeIngredientDecision>;
 
 export const planMetadataSchema = z.object({
 	availableEquipment: z.array(z.string().trim().min(1).max(80)).max(30),

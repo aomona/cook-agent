@@ -10,12 +10,13 @@ import { formatIngredientLine, scalePlanMaterial } from '@/lib/plans/presentatio
 import {
 	normalizedIngredientSchema,
 	normalizedRecipeStepSchema,
-	recipeMaterialChangeSchema,
+	recipeIngredientDecisionSchema,
 	recipeStepChangeSchema,
 } from '@/lib/plans/schema';
 import type {
 	NormalizedIngredient,
 	NormalizedRecipe,
+	RecipeIngredientDecision,
 	RecipeMaterialChange,
 	RecipeStepChange,
 } from '@/lib/plans/types';
@@ -89,65 +90,126 @@ const buildIngredientReference = (ingredients: NormalizedIngredient[]): string[]
 const buildStepsReference = (steps: NormalizedRecipe['steps']): string[] =>
 	steps.map((step) => `- ${step.id} | STEP ${step.order} | ${step.text}`);
 
-const getIngredientSignature = (ingredient: NormalizedIngredient): string =>
-	JSON.stringify({
-		amount: ingredient.amount ?? null,
-		amountMax: ingredient.amountMax ?? null,
-		amountMin: ingredient.amountMin ?? null,
-		amountValue: ingredient.amountValue ?? null,
-		name: ingredient.name,
-		optional: ingredient.optional ?? null,
-		preparation: ingredient.preparation ?? null,
-		unit: ingredient.unit ?? null,
+const normalizeIngredientName = (value: string): string =>
+	value
+		.normalize('NFKC')
+		.replace(/（[^）]*用）/g, '')
+		.replace(/\([^)]*用\)/g, '')
+		.replace(/[\s　]+/g, '')
+		.toLowerCase();
+
+const buildIngredientIndex = (
+	ingredients: NormalizedIngredient[],
+): Map<string, NormalizedIngredient> =>
+	new Map(ingredients.map((ingredient) => [ingredient.id, ingredient]));
+
+const findIngredientByName = ({
+	candidates,
+	name,
+}: {
+	candidates: NormalizedIngredient[];
+	name: string;
+}): NormalizedIngredient | null => {
+	const normalizedTarget = normalizeIngredientName(name);
+
+	for (const candidate of candidates) {
+		if (normalizeIngredientName(candidate.name) === normalizedTarget) {
+			return candidate;
+		}
+	}
+
+	return null;
+};
+
+const resolveOptimizedIngredientsForDecision = ({
+	decision,
+	optimizedById,
+	optimizedIngredients,
+}: {
+	decision: RecipeIngredientDecision;
+	optimizedById: Map<string, NormalizedIngredient>;
+	optimizedIngredients: NormalizedIngredient[];
+}): NormalizedIngredient[] => {
+	const matchedById = (decision.nextIngredientIds ?? [])
+		.map((ingredientId) => optimizedById.get(ingredientId) ?? null)
+		.filter((ingredient): ingredient is NormalizedIngredient => ingredient !== null);
+
+	if (matchedById.length > 0) {
+		return matchedById;
+	}
+
+	if (decision.ingredientId) {
+		const exactMatch = optimizedById.get(decision.ingredientId);
+
+		if (exactMatch) {
+			return [exactMatch];
+		}
+	}
+
+	const sameNameMatch = findIngredientByName({
+		candidates: optimizedIngredients,
+		name: decision.ingredientName,
 	});
 
-const buildFallbackMaterialChanges = ({
+	return sameNameMatch ? [sameNameMatch] : [];
+};
+
+const buildMaterialChangesFromDecisions = ({
 	baseIngredients,
+	decisions,
 	optimizedIngredients,
 }: {
 	baseIngredients: NormalizedIngredient[];
+	decisions: RecipeIngredientDecision[];
 	optimizedIngredients: NormalizedIngredient[];
 }): RecipeMaterialChange[] => {
-	const optimizedById = new Map(
-		optimizedIngredients.map((ingredient) => [ingredient.id, ingredient]),
-	);
-	const baseById = new Map(baseIngredients.map((ingredient) => [ingredient.id, ingredient]));
+	const baseById = buildIngredientIndex(baseIngredients);
+	const optimizedById = buildIngredientIndex(optimizedIngredients);
+	const optimizedWithoutMatches = new Set(optimizedIngredients.map((ingredient) => ingredient.id));
 	const changes: RecipeMaterialChange[] = [];
 
-	for (const ingredient of baseIngredients) {
-		const optimizedIngredient = optimizedById.get(ingredient.id);
+	for (const decision of decisions) {
+		const baseIngredient = decision.ingredientId
+			? (baseById.get(decision.ingredientId) ?? null)
+			: null;
+		const matchedOptimizedIngredients = resolveOptimizedIngredientsForDecision({
+			decision,
+			optimizedById,
+			optimizedIngredients,
+		});
 
-		if (!optimizedIngredient) {
-			changes.push({
-				changeType: 'remove',
-				confidence: 'medium',
-				ingredientId: ingredient.id,
-				ingredientName: ingredient.name,
-				reason: '最適化後のレシピではこの材料を使わないためです。',
-			});
+		for (const ingredient of matchedOptimizedIngredients) {
+			optimizedWithoutMatches.delete(ingredient.id);
+		}
+
+		if (!decision.needsChange || decision.changeType === 'keep') {
 			continue;
 		}
 
-		if (getIngredientSignature(ingredient) === getIngredientSignature(optimizedIngredient)) {
-			continue;
+		const primaryOptimizedIngredient = matchedOptimizedIngredients[0] ?? null;
+
+		if (primaryOptimizedIngredient) {
+			optimizedWithoutMatches.delete(primaryOptimizedIngredient.id);
 		}
 
 		changes.push({
-			changeType: ingredient.name === optimizedIngredient.name ? 'scale' : 'substitute',
-			confidence: 'medium',
-			ingredientId: ingredient.id,
-			ingredientName: ingredient.name,
-			nextIngredientId: optimizedIngredient.id,
-			nextIngredientName: optimizedIngredient.name,
-			reason:
-				ingredient.name === optimizedIngredient.name
-					? '人数や制約に合わせて材料の扱いを調整したためです。'
-					: '人数や制約に合わせて材料を置き換えたためです。',
+			changeType: decision.changeType,
+			confidence: decision.confidence,
+			ingredientId: baseIngredient?.id ?? decision.ingredientId ?? null,
+			ingredientName: baseIngredient?.name ?? decision.ingredientName,
+			nextIngredientId: primaryOptimizedIngredient?.id ?? null,
+			nextIngredientName:
+				matchedOptimizedIngredients.length > 1
+					? matchedOptimizedIngredients.map((ingredient) => ingredient.name).join(' / ')
+					: (primaryOptimizedIngredient?.name ?? null),
+			reason: decision.reason,
 		});
 	}
 
-	for (const ingredient of optimizedIngredients) {
-		if (baseById.has(ingredient.id)) {
+	for (const ingredientId of optimizedWithoutMatches) {
+		const optimizedIngredient = optimizedById.get(ingredientId);
+
+		if (!optimizedIngredient) {
 			continue;
 		}
 
@@ -155,9 +217,9 @@ const buildFallbackMaterialChanges = ({
 			changeType: 'add',
 			confidence: 'medium',
 			ingredientId: null,
-			ingredientName: ingredient.name,
-			nextIngredientId: ingredient.id,
-			nextIngredientName: ingredient.name,
+			ingredientName: optimizedIngredient.name,
+			nextIngredientId: optimizedIngredient.id,
+			nextIngredientName: optimizedIngredient.name,
 			reason: '最適化後のレシピで必要になったため追加しました。',
 		});
 	}
@@ -177,6 +239,7 @@ export const adaptRecipeServings = async ({
 	targetServings: number;
 }): Promise<{
 	adjustedRecipe: NormalizedRecipe;
+	ingredientDecisions: RecipeIngredientDecision[];
 	materialChanges: RecipeMaterialChange[];
 	stepChanges: RecipeStepChange[];
 }> => {
@@ -194,8 +257,11 @@ export const adaptRecipeServings = async ({
 	const outputSchema = z.object({
 		description: z.string().trim().min(1).max(240).nullable(),
 		ingredients: z.array(normalizedIngredientSchema).min(1).max(200),
+		ingredientDecisions: z
+			.array(recipeIngredientDecisionSchema)
+			.min(scaledRecipe.ingredients.length)
+			.max(scaledRecipe.ingredients.length + 12),
 		steps: z.array(normalizedRecipeStepSchema).length(recipe.steps.length),
-		materialChanges: z.array(recipeMaterialChangeSchema).max(scaledRecipe.ingredients.length + 12),
 		stepChanges: z.array(recipeStepChangeSchema).max(recipe.steps.length * 3),
 	});
 
@@ -210,8 +276,10 @@ export const adaptRecipeServings = async ({
 			'Reuse original ingredient ids whenever the ingredient remains conceptually the same. Use new ids only for truly new ingredients.',
 			'Do not invent advanced techniques or safety-critical claims that are not implied by the original recipe.',
 			'If you are uncertain whether heating time or fire level should change, stay conservative and keep the original intent.',
-			'Use the scaled ingredient list as the baseline source of truth, but you may add, remove, merge, split, or substitute ingredients when needed to satisfy the constraints.',
-			'Return materialChanges only for meaningful ingredient changes beyond obvious servings scaling.',
+			'Use the scaled ingredient list as the baseline source of truth, but first judge per ingredient whether a change is necessary.',
+			'Default to keep when the ingredient can stay as-is after servings scaling.',
+			'Only change ingredients when necessary to satisfy servings, equipment, or constraints.',
+			'Return ingredientDecisions for each baseline ingredient before producing final ingredients.',
 			'Do not invent advanced techniques or safety-critical claims that are not implied by the original recipe.',
 			'Return stepChanges only for meaningful changes.',
 		].join(' '),
@@ -232,11 +300,14 @@ export const adaptRecipeServings = async ({
 			...buildStepsReference(recipe.steps),
 			'',
 			'出力ルール:',
+			'- ingredientDecisions にはベース材料ごとに、変更が必要かどうかを必ず入れてください。',
+			'- 変更不要なら needsChange=false, changeType=keep にしてください。',
+			'- 人数換算だけで足りる場合は keep か scale を優先してください。',
+			'- split / merge の場合は nextIngredientIds で対応先を示してください。',
 			'- 各 step の id と order は入力と同じ値を返してください。',
 			'- ingredients は最終的に採用する材料一覧にしてください。',
 			'- text は最適化後の自然な手順文にしてください。',
 			'- 加熱時間や火加減を変える場合は、人数・器具・制約に必要な差だけ反映してください。',
-			'- materialChanges には add/remove/substitute/merge/split などの変更理由を入れてください。単純な人数換算だけなら空配列で構いません。',
 			'- notes は必要な補足がある時だけ返してください。',
 			'- description は最適化後に補足したい要約があれば返し、不要なら null にしてください。',
 		]
@@ -270,13 +341,11 @@ export const adaptRecipeServings = async ({
 		};
 	});
 
-	const materialChanges =
-		output.materialChanges.length > 0
-			? output.materialChanges
-			: buildFallbackMaterialChanges({
-					baseIngredients: scaledRecipe.ingredients,
-					optimizedIngredients: output.ingredients,
-				});
+	const materialChanges = buildMaterialChangesFromDecisions({
+		baseIngredients: scaledRecipe.ingredients,
+		decisions: output.ingredientDecisions,
+		optimizedIngredients: output.ingredients,
+	});
 
 	return {
 		adjustedRecipe: {
@@ -285,6 +354,7 @@ export const adaptRecipeServings = async ({
 			ingredients: output.ingredients,
 			steps: adjustedSteps,
 		},
+		ingredientDecisions: output.ingredientDecisions,
 		materialChanges,
 		stepChanges: output.stepChanges,
 	};

@@ -90,12 +90,23 @@ export type RecipeStepChange = {
 };
 
 export type RecipeMaterialChangeType =
+	| 'keep'
 	| 'scale'
 	| 'substitute'
 	| 'add'
 	| 'remove'
 	| 'merge'
 	| 'split';
+
+export type RecipeIngredientDecision = {
+	ingredientId?: string | null;
+	ingredientName: string;
+	needsChange: boolean;
+	changeType: RecipeMaterialChangeType;
+	reason: string;
+	confidence: RecipeStepChangeConfidence;
+	nextIngredientIds?: string[];
+};
 
 export type RecipeMaterialChange = {
 	changeType: RecipeMaterialChangeType;
