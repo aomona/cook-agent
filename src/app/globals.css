@@ -14,3 +14,158 @@ body {
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 }
+
+@keyframes app-spinner-spin {
+	from {
+		transform: rotate(0deg);
+	}
+
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.app-spinner {
+	animation: app-spinner-spin 0.8s linear infinite;
+	border: 2px solid color-mix(in srgb, currentColor 22%, transparent);
+	border-radius: 9999px;
+	border-top-color: currentColor;
+	color: var(--ui-colors-blue-500, #3b82f6);
+}
+
+@keyframes plan-status-dot-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.25;
+	}
+}
+
+.plan-status-dot-active {
+	animation: plan-status-dot-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes plan-reasoning-cursor-blink {
+	0%,
+	100% {
+		opacity: 0.7;
+	}
+	50% {
+		opacity: 0;
+	}
+}
+
+.plan-reasoning-streaming::after {
+	content: "▋";
+	display: inline-block;
+	margin-left: 0.1em;
+	animation: plan-reasoning-cursor-blink 0.9s step-end infinite;
+	opacity: 0.7;
+}
+
+.plan-timeline-shell {
+	display: grid;
+	gap: 1rem;
+}
+
+.plan-timeline-ruler {
+	display: grid;
+	gap: 0.5rem;
+}
+
+.plan-timeline-ruler-labels {
+	position: relative;
+	height: 1rem;
+	color: color-mix(in srgb, currentColor 50%, transparent);
+	font-size: 0.75rem;
+}
+
+.plan-timeline-ruler-label {
+	position: absolute;
+	top: 0;
+	transform: translateX(-50%);
+	white-space: nowrap;
+}
+
+.plan-timeline-ruler-label:first-child {
+	transform: translateX(0);
+}
+
+.plan-timeline-ruler-label:last-child {
+	transform: translateX(-100%);
+}
+
+.plan-timeline-ruler-track {
+	position: relative;
+	height: 0.5rem;
+	overflow: hidden;
+}
+
+.plan-timeline-grid-line,
+.plan-timeline-row-grid-line {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 1px;
+	background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.plan-timeline-conflict {
+	position: absolute;
+	inset-block: 0;
+	border-radius: 9999px;
+	background: var(
+		--plan-timeline-conflict-color,
+		color-mix(in srgb, var(--ui-colors-red-500, #ef4444) 38%, transparent)
+	);
+}
+
+.plan-timeline-rows {
+	display: grid;
+}
+
+.plan-timeline-row {
+	position: relative;
+	display: grid;
+	gap: 0.75rem;
+}
+
+.plan-timeline-row-track {
+	position: relative;
+	height: 3.5rem;
+	overflow: hidden;
+}
+
+.plan-timeline-step-slack {
+	position: absolute;
+	top: 0.45rem;
+	height: 2.6rem;
+	border: 1px dashed color-mix(in srgb, currentColor 24%, transparent);
+	border-radius: 0.8rem;
+	background: color-mix(in srgb, currentColor 4%, transparent);
+}
+
+.plan-timeline-step-bar {
+	position: absolute;
+	top: 0.45rem;
+	display: flex;
+	align-items: center;
+	height: 2.6rem;
+	padding-inline: 0.75rem;
+	border-radius: 0.8rem;
+	color: var(--plan-timeline-step-text-color, #fff);
+	overflow: hidden;
+}
+
+.plan-timeline-step-text {
+	display: block;
+	width: 100%;
+	text-align: center;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 0.95rem;
+	font-weight: 700;
+}

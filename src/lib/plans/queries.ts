@@ -1,6 +1,25 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { db } from '@/db';
-import { planRecipeSources, plans, recipeSources } from '@/db/schema';
+import { planRecipeSources, plans, planVersions, recipeSources } from '@/db/schema';
+import { mergePlannerContext } from '@/lib/planning-settings';
+import { getUserPlanningSettingsState } from '@/lib/planning-settings-queries';
+import { scalePlanMaterial } from '@/lib/plans/presentation';
+import {
+	normalizedRecipeSchema,
+	planDocumentSchema,
+	recipeMaterialChangeSchema,
+	recipeStepChangeSchema,
+} from '@/lib/plans/schema';
+import type {
+	NormalizedRecipe,
+	PlanDocument,
+	PlanGenerationInput,
+	PlanGenerationOptions,
+	PlanMaterial,
+	RecipeAdjustmentStatus,
+	RecipeMaterialChange,
+	RecipeStepChange,
+} from '@/lib/plans/types';
 import { parseUuid } from '@/lib/uuid';
 
 export type PlanListItem = {
@@ -12,6 +31,109 @@ export type PlanListItem = {
 	completedRecipeCount: number;
 	createdAt: string;
 	updatedAt: string;
+};
+
+export type ActivePlanVersionData = {
+	id: string;
+	versionNumber: number;
+	changeSummary: string | null;
+	createdAt: string;
+	plan: PlanDocument;
+};
+
+export type PlanRecipeSnapshot = {
+	id: string;
+	type: 'url' | 'text';
+	label: string;
+	title: string | null;
+	summary: string | null;
+	processingStatus: 'queued' | 'processing' | 'completed' | 'failed';
+	normalizedRecipe: NormalizedRecipe | null;
+	adjustedRecipe: NormalizedRecipe | null;
+	adjustedForServings: number | null;
+	adjustmentStatus: RecipeAdjustmentStatus;
+	adjustmentError: string | null;
+	adjustmentConfirmedAt: string | null;
+	baseServings: number | null;
+	materialChanges: RecipeMaterialChange[];
+	stepChanges: RecipeStepChange[];
+};
+
+export type PlanEditorData = {
+	id: string;
+	title: string;
+	status: 'draft' | 'ready' | 'archived';
+	requestedServings: number | null;
+	createdAt: string;
+	updatedAt: string;
+	recipes: PlanRecipeSnapshot[];
+	activeVersion: ActivePlanVersionData | null;
+	hasIncompatibleActiveVersion?: boolean;
+};
+
+const buildPlanMaterials = (
+	recipes: PlanRecipeSnapshot[],
+	requestedServings: number,
+): PlanMaterial[] =>
+	recipes.flatMap((recipe) => {
+		const sourceIngredients =
+			recipe.adjustedRecipe?.servings === requestedServings
+				? recipe.adjustedRecipe.ingredients
+				: (recipe.normalizedRecipe?.ingredients ?? []);
+
+		return sourceIngredients.map((ingredient) =>
+			scalePlanMaterial(
+				{
+					id: `${recipe.id}:${ingredient.id}`,
+					name: ingredient.name,
+					amount: ingredient.amount,
+					amountValue: ingredient.amountValue,
+					amountMin: ingredient.amountMin,
+					amountMax: ingredient.amountMax,
+					unit: ingredient.unit,
+					recipeSourceId: recipe.id,
+					sourceIngredientId: ingredient.id,
+				},
+				recipe.adjustedRecipe?.servings === requestedServings
+					? requestedServings
+					: (recipe.baseServings ?? recipe.normalizedRecipe?.servings),
+				requestedServings,
+			),
+		);
+	});
+
+const parseNormalizedRecipe = (value: unknown): NormalizedRecipe | null => {
+	const parsedRecipe = normalizedRecipeSchema.safeParse(value);
+
+	return parsedRecipe.success ? parsedRecipe.data : null;
+};
+
+const parseStepChanges = (value: unknown): RecipeStepChange[] => {
+	const parsedStepChanges = recipeStepChangeSchema.array().safeParse(value ?? []);
+
+	return parsedStepChanges.success ? parsedStepChanges.data : [];
+};
+
+const parseMaterialChanges = (value: unknown): RecipeMaterialChange[] => {
+	const parsedMaterialChanges = recipeMaterialChangeSchema.array().safeParse(value ?? []);
+
+	return parsedMaterialChanges.success ? parsedMaterialChanges.data : [];
+};
+
+const getRecipeLabel = ({
+	sourceType,
+	sourceUrl,
+	rawContent,
+}: {
+	sourceType: 'url' | 'manual';
+	sourceUrl: string | null;
+	rawContent: { inputText?: string; title?: string };
+}): string => {
+	if (sourceType === 'url') {
+		return sourceUrl ?? '';
+	}
+
+	return rawContent.inputText ?? rawContent.title ?? '貼り付けたレシピテキスト';
 };
 
 export const getPlanListItems = async (userId: string): Promise<PlanListItem[]> => {
@@ -70,4 +192,286 @@ export const getOwnedDraftPlan = async (
 		.where(and(eq(plans.id, validPlanId), eq(plans.userId, userId), eq(plans.status, 'draft')));
 
 	return plan ?? null;
+};
+
+export const deleteOwnedPlan = async (planId: string, userId: string): Promise<boolean> => {
+	const validPlanId = parseUuid(planId);
+
+	if (!validPlanId) {
+		return false;
+	}
+
+	const [deletedPlan] = await db
+		.delete(plans)
+		.where(and(eq(plans.id, validPlanId), eq(plans.userId, userId)))
+		.returning({
+			id: plans.id,
+		});
+
+	return Boolean(deletedPlan);
+};
+
+export const getOwnedPlanEditorData = async (
+	planId: string,
+	userId: string,
+): Promise<PlanEditorData | null> => {
+	const validPlanId = parseUuid(planId);
+
+	if (!validPlanId) {
+		return null;
+	}
+
+	const [plan] = await db
+		.select({
+			id: plans.id,
+			title: plans.title,
+			status: plans.status,
+			requestedServings: plans.requestedServings,
+			createdAt: plans.createdAt,
+			updatedAt: plans.updatedAt,
+			activeVersionId: plans.activeVersionId,
+		})
+		.from(plans)
+		.where(and(eq(plans.id, validPlanId), eq(plans.userId, userId)));
+
+	if (!plan) {
+		return null;
+	}
+
+	const recipeRows = await db
+		.select({
+			adjustedForServings: planRecipeSources.adjustedForServings,
+			adjustedRecipe: planRecipeSources.adjustedRecipe,
+			adjustmentConfirmedAt: planRecipeSources.adjustmentConfirmedAt,
+			adjustmentError: planRecipeSources.adjustmentError,
+			adjustmentStatus: planRecipeSources.adjustmentStatus,
+			baseServingsOverride: planRecipeSources.baseServingsOverride,
+			id: recipeSources.id,
+			materialChanges: planRecipeSources.materialChanges,
+			sourceType: recipeSources.sourceType,
+			sourceUrl: recipeSources.sourceUrl,
+			rawContent: recipeSources.rawContent,
+			stepChanges: planRecipeSources.stepChanges,
+			title: recipeSources.title,
+			summary: recipeSources.summary,
+			processingStatus: recipeSources.processingStatus,
+			normalizedRecipe: recipeSources.normalizedRecipe,
+			sortOrder: planRecipeSources.sortOrder,
+		})
+		.from(planRecipeSources)
+		.innerJoin(recipeSources, eq(planRecipeSources.recipeSourceId, recipeSources.id))
+		.where(and(eq(planRecipeSources.planId, validPlanId), eq(recipeSources.userId, userId)))
+		.orderBy(asc(planRecipeSources.sortOrder), asc(recipeSources.createdAt));
+
+	const recipes: PlanRecipeSnapshot[] = recipeRows.map((recipe) => ({
+		id: recipe.id,
+		type: recipe.sourceType === 'url' ? 'url' : 'text',
+		label: getRecipeLabel({
+			sourceType: recipe.sourceType,
+			sourceUrl: recipe.sourceUrl,
+			rawContent: recipe.rawContent,
+		}),
+		title: recipe.title,
+		summary: recipe.summary,
+		processingStatus: recipe.processingStatus,
+		normalizedRecipe: parseNormalizedRecipe(recipe.normalizedRecipe),
+		adjustedRecipe: parseNormalizedRecipe(recipe.adjustedRecipe),
+		adjustedForServings: recipe.adjustedForServings,
+		adjustmentStatus: recipe.adjustmentStatus,
+		adjustmentError: recipe.adjustmentError,
+		adjustmentConfirmedAt: recipe.adjustmentConfirmedAt?.toISOString() ?? null,
+		baseServings:
+			recipe.baseServingsOverride ??
+			parseNormalizedRecipe(recipe.normalizedRecipe)?.servings ??
+			null,
+		materialChanges: parseMaterialChanges(recipe.materialChanges),
+		stepChanges: parseStepChanges(recipe.stepChanges),
+	}));
+
+	const [activeVersion] = plan.activeVersionId
+		? await db
+				.select({
+					id: planVersions.id,
+					versionNumber: planVersions.versionNumber,
+					changeSummary: planVersions.changeSummary,
+					createdAt: planVersions.createdAt,
+					planJson: planVersions.planJson,
+				})
+				.from(planVersions)
+				.where(and(eq(planVersions.id, plan.activeVersionId), eq(planVersions.planId, plan.id)))
+		: [];
+
+	const parsedActivePlan = activeVersion
+		? planDocumentSchema.safeParse(activeVersion.planJson)
+		: null;
+
+	return {
+		id: plan.id,
+		title: plan.title,
+		status: plan.status,
+		requestedServings: plan.requestedServings,
+		createdAt: plan.createdAt.toISOString(),
+		updatedAt: plan.updatedAt.toISOString(),
+		recipes,
+		hasIncompatibleActiveVersion: Boolean(activeVersion && !parsedActivePlan?.success),
+		activeVersion:
+			activeVersion && parsedActivePlan?.success
+				? {
+						id: activeVersion.id,
+						versionNumber: activeVersion.versionNumber,
+						changeSummary: activeVersion.changeSummary,
+						createdAt: activeVersion.createdAt.toISOString(),
+						plan: parsedActivePlan.data,
+					}
+				: null,
+	};
+};
+
+export const buildPlanGenerationInput = async ({
+	options,
+	planId,
+	userId,
+}: {
+	options: PlanGenerationOptions;
+	planId: string;
+	userId: string;
+}): Promise<PlanGenerationInput> => {
+	const plan = await getOwnedPlanEditorData(planId, userId);
+
+	if (!plan) {
+		throw new Error('Plan not found.');
+	}
+
+	if (plan.status === 'archived') {
+		throw new Error('Archived plans cannot be generated.');
+	}
+
+	if (plan.recipes.length === 0) {
+		throw new Error('At least one structured recipe is required.');
+	}
+
+	const incompleteRecipe = plan.recipes.find(
+		(recipe) =>
+			recipe.processingStatus !== 'completed' ||
+			!recipe.normalizedRecipe ||
+			!recipe.adjustmentConfirmedAt ||
+			recipe.adjustmentStatus === 'adjusting' ||
+			recipe.adjustmentStatus === 'action_required' ||
+			recipe.adjustmentStatus === 'needs_base_servings',
+	);
+
+	if (incompleteRecipe) {
+		throw new Error('All recipes must be processed before generating a plan.');
+	}
+
+	const planningSettingsState = await getUserPlanningSettingsState(userId);
+	const plannerContext = mergePlannerContext({
+		availableEquipment: options.availableEquipment,
+		constraints: options.constraints,
+		settings: planningSettingsState.settings,
+	});
+
+	return {
+		planId: plan.id,
+		title: plan.title,
+		requestedServings: options.requestedServings,
+		availableEquipment: plannerContext.availableEquipment,
+		constraints: plannerContext.constraints,
+		planningSettings: planningSettingsState.settings,
+		materials: buildPlanMaterials(plan.recipes, options.requestedServings),
+		recipes: plan.recipes.map((recipe) => {
+			const plannerRecipe =
+				recipe.adjustedRecipe && recipe.adjustedForServings === options.requestedServings
+					? recipe.adjustedRecipe
+					: recipe.normalizedRecipe;
+
+			return {
+				recipeSourceId: recipe.id,
+				sourceType: recipe.type === 'url' ? 'url' : 'manual',
+				sourceUrl: recipe.type === 'url' ? recipe.label : null,
+				title: recipe.title ?? recipe.label,
+				summary: recipe.summary,
+				normalizedRecipe: plannerRecipe as NormalizedRecipe,
+			};
+		}),
+	};
+};
+
+export const saveGeneratedPlanVersion = async ({
+	changeSummary,
+	planDocument,
+	planId,
+	requestedServings,
+	userId,
+}: {
+	changeSummary?: string;
+	planDocument: PlanDocument;
+	planId: string;
+	requestedServings: number;
+	userId: string;
+}): Promise<ActivePlanVersionData> => {
+	const validPlanId = parseUuid(planId);
+
+	if (!validPlanId) {
+		throw new Error('Plan not found.');
+	}
+
+	const [plan] = await db
+		.select({
+			id: plans.id,
+			activeVersionId: plans.activeVersionId,
+		})
+		.from(plans)
+		.where(and(eq(plans.id, validPlanId), eq(plans.userId, userId)));
+
+	if (!plan) {
+		throw new Error('Plan not found.');
+	}
+
+	const [nextVersionNumber] = await db
+		.select({
+			value: sql<number>`coalesce(max(${planVersions.versionNumber}), 0) + 1`,
+		})
+		.from(planVersions)
+		.where(eq(planVersions.planId, validPlanId));
+
+	const [insertedVersion] = await db
+		.insert(planVersions)
+		.values({
+			planId: validPlanId,
+			versionNumber: Number(nextVersionNumber?.value ?? 1),
+			parentVersionId: plan.activeVersionId,
+			changeReason: plan.activeVersionId ? 'user_edit' : 'initial',
+			changeSummary:
+				changeSummary ??
+				(plan.activeVersionId ? 'AI が工程を再生成しました。' : 'AI が工程を生成しました。'),
+			planJson: planDocument,
+			createdByUserId: userId,
+		})
+		.returning({
+			id: planVersions.id,
+			versionNumber: planVersions.versionNumber,
+			changeSummary: planVersions.changeSummary,
+			createdAt: planVersions.createdAt,
+			planJson: planVersions.planJson,
+		});
+
+	await db
+		.update(plans)
+		.set({
+			activeVersionId: insertedVersion.id,
+			requestedServings,
+			status: 'ready',
+		})
+		.where(and(eq(plans.id, validPlanId), eq(plans.userId, userId)));
+
+	const parsedPlan = planDocumentSchema.parse(insertedVersion.planJson);
+
+	return {
+		id: insertedVersion.id,
+		versionNumber: insertedVersion.versionNumber,
+		changeSummary: insertedVersion.changeSummary,
+		createdAt: insertedVersion.createdAt.toISOString(),
+		plan: parsedPlan,
+	};
 };

@@ -23,5 +23,9 @@ export default async function CreatePage() {
 		redirect('/create/start');
 	}
 
+	if (!plan.requestedServings) {
+		redirect('/create/servings');
+	}
+
 	return <CreatePageClient initialPlan={plan} />;
 }

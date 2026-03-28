@@ -1,30 +1,30 @@
 'use client';
 
 import {
-	Badge,
 	Button,
 	Card,
 	Flex,
 	For,
 	Heading,
-	Input,
-	Loading,
-	Modal,
-	SegmentedControl,
-	Status,
 	Text,
-	Textarea,
 	useDisclosure,
 	useNotice,
 	VStack,
 } from '@workspaces/ui';
 import NextLink from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CreatePlanData, CreateRecipeItem, RecipeInputMode } from '@/lib/create-session';
-
-const pendingStatuses = new Set(['queued', 'processing']);
-
-const isTemporaryRecipeId = (recipeId: string): boolean => recipeId.startsWith('temp-');
+import {
+	addRecipeToPlanAction,
+	confirmAdjustedRecipesAction,
+	deleteRecipeFromPlanAction,
+	retryRecipeAdjustmentAction,
+	updateRecipeBaseServingsAction,
+	updateRecipeInputAction,
+} from './actions';
+import { AddRecipeModal } from './add-recipe-modal';
+import { RecipeCard } from './recipe-card';
+import { isPendingRecipe, isTemporaryCreateRecipeId } from './recipe-status';
 
 const getErrorMessage = (error: unknown): string => {
 	if (error instanceof Error && error.message) {
@@ -34,62 +34,80 @@ const getErrorMessage = (error: unknown): string => {
 	return '処理に失敗しました。';
 };
 
-const isPendingRecipe = (recipe: CreateRecipeItem): boolean =>
-	pendingStatuses.has(recipe.processingStatus);
-
 const getCanProceed = (recipes: CreateRecipeItem[]): boolean =>
-	recipes.length > 0 && recipes.every((recipe) => recipe.processingStatus === 'completed');
-
-const RecipeStatus = ({
-	recipe,
-	onRetry,
-}: {
-	recipe: CreateRecipeItem;
-	onRetry: (recipeId: string) => void;
-}) => {
-	if (recipe.processingStatus === 'completed') {
-		return <Status value="success">抽出完了</Status>;
-	}
-
-	if (recipe.processingStatus === 'failed') {
-		return (
-			<Flex align="center" gap="sm" wrap="wrap">
-				<Status value="error">抽出に失敗しました</Status>
-				{isTemporaryRecipeId(recipe.id) ? null : (
-					<Button size="sm" variant="ghost" onClick={() => onRetry(recipe.id)}>
-						再試行
-					</Button>
-				)}
-			</Flex>
-		);
-	}
-
-	return (
-		<Flex align="center" color="fg.subtle" gap="sm">
-			<Loading.Oval color="blue.500" fontSize="lg" />
-			<Text fontSize="sm">レシピを抽出中...</Text>
-		</Flex>
+	recipes.length > 0 &&
+	recipes.every(
+		(recipe) =>
+			recipe.processingStatus === 'completed' &&
+			recipe.adjustmentStatus === 'completed' &&
+			Boolean(recipe.adjustmentConfirmedAt) &&
+			!recipe.requiresServingsInput &&
+			Boolean(recipe.adjustedRecipe),
 	);
-};
+
+const getReadyForReview = (recipes: CreateRecipeItem[]): boolean =>
+	recipes.length > 0 &&
+	recipes.every(
+		(recipe) =>
+			recipe.processingStatus === 'completed' &&
+			recipe.adjustmentStatus === 'completed' &&
+			!recipe.requiresServingsInput &&
+			Boolean(recipe.adjustedRecipe),
+	);
+
+const getInitialServingsInputMap = (plan: CreatePlanData): Record<string, string> =>
+	Object.fromEntries(
+		plan.recipes.map((recipe) => [recipe.id, recipe.baseServings?.toString() ?? '']),
+	);
+
+const mergeServingsInputMap = ({
+	currentMap,
+	recipes,
+}: {
+	currentMap: Record<string, string>;
+	recipes: CreateRecipeItem[];
+}): Record<string, string> =>
+	Object.fromEntries(
+		recipes.map((recipe) => [
+			recipe.id,
+			currentMap[recipe.id] ?? recipe.baseServings?.toString() ?? '',
+		]),
+	);
 
 export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData }) => {
-	const { open, onClose, onOpen } = useDisclosure();
+	const { open: isAddRecipeOpen, onClose: closeAddRecipe, onOpen: openAddRecipe } = useDisclosure();
+	const {
+		open: isEditRecipeOpen,
+		onClose: closeEditRecipe,
+		onOpen: openEditRecipe,
+	} = useDisclosure();
 	const [mode, setMode] = useState<RecipeInputMode>('url');
 	const [urlValue, setUrlValue] = useState('');
 	const [textValue, setTextValue] = useState('');
+	const [editingRecipe, setEditingRecipe] = useState<CreateRecipeItem | null>(null);
+	const [editMode, setEditMode] = useState<RecipeInputMode>('url');
+	const [editUrlValue, setEditUrlValue] = useState('');
+	const [editTextValue, setEditTextValue] = useState('');
 	const [plan, setPlan] = useState<CreatePlanData>(initialPlan);
 	const [deletingRecipeIds, setDeletingRecipeIds] = useState<string[]>([]);
+	const [servingsInputByRecipeId, setServingsInputByRecipeId] = useState<Record<string, string>>(
+		() => getInitialServingsInputMap(initialPlan),
+	);
+	const [savingServingsRecipeIds, setSavingServingsRecipeIds] = useState<string[]>([]);
+	const [retryingAdjustmentRecipeIds, setRetryingAdjustmentRecipeIds] = useState<string[]>([]);
+	const [updatingRecipeIds, setUpdatingRecipeIds] = useState<string[]>([]);
+	const [confirmingAdjustments, setConfirmingAdjustments] = useState(false);
 	const processingRecipeIdsRef = useRef<Set<string>>(new Set());
 	const scheduledRecipeIdsRef = useRef<Set<string>>(new Set());
+	const adjustingRecipeIdsRef = useRef<Set<string>>(new Set());
 	const notice = useNotice();
+	const confirmedRecipeCount = plan.recipes.filter((recipe) => recipe.adjustmentConfirmedAt).length;
+	const readyForReview = getReadyForReview(plan.recipes);
 
-	const modeItems = useMemo(
-		() => [
-			{ label: 'URL', value: 'url' },
-			{ label: 'Text', value: 'text' },
-		],
-		[],
-	);
+	useEffect(() => {
+		setPlan(initialPlan);
+		setServingsInputByRecipeId(getInitialServingsInputMap(initialPlan));
+	}, [initialPlan]);
 
 	const refreshPlan = useCallback(async (): Promise<void> => {
 		const response = await fetch(`/api/plans/${plan.id}`, {
@@ -102,6 +120,12 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 
 		const payload = (await response.json()) as { plan: CreatePlanData };
 		setPlan(payload.plan);
+		setServingsInputByRecipeId((currentMap) =>
+			mergeServingsInputMap({
+				currentMap,
+				recipes: payload.plan.recipes,
+			}),
+		);
 	}, [plan.id]);
 
 	const queueRecipeProcessing = useCallback(async (recipeId: string): Promise<void> => {
@@ -120,6 +144,25 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 		}
 	}, []);
 
+	const queueRecipeAdjustment = useCallback(
+		async (recipeId: string): Promise<void> => {
+			if (adjustingRecipeIdsRef.current.has(recipeId)) {
+				return;
+			}
+
+			adjustingRecipeIdsRef.current.add(recipeId);
+
+			try {
+				await fetch(`/api/plans/${plan.id}/recipe-sources/${recipeId}/adjust`, {
+					method: 'POST',
+				});
+			} finally {
+				adjustingRecipeIdsRef.current.delete(recipeId);
+			}
+		},
+		[plan.id],
+	);
+
 	useEffect(() => {
 		for (const recipe of plan.recipes) {
 			if (recipe.processingStatus !== 'queued') {
@@ -127,13 +170,28 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 				continue;
 			}
 
-			if (isTemporaryRecipeId(recipe.id) || scheduledRecipeIdsRef.current.has(recipe.id)) {
+			if (isTemporaryCreateRecipeId(recipe.id) || scheduledRecipeIdsRef.current.has(recipe.id)) {
 				continue;
 			}
 
 			void queueRecipeProcessing(recipe.id);
 		}
 	}, [plan.recipes, queueRecipeProcessing]);
+
+	useEffect(() => {
+		for (const recipe of plan.recipes) {
+			if (
+				recipe.processingStatus !== 'completed' ||
+				recipe.adjustmentStatus !== 'idle' ||
+				recipe.requiresServingsInput ||
+				isTemporaryCreateRecipeId(recipe.id)
+			) {
+				continue;
+			}
+
+			void queueRecipeAdjustment(recipe.id);
+		}
+	}, [plan.recipes, queueRecipeAdjustment]);
 
 	useEffect(() => {
 		if (!plan.recipes.some(isPendingRecipe)) {
@@ -153,16 +211,30 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 		const rawValue = mode === 'url' ? urlValue : textValue;
 		const value = rawValue.trim();
 
-		if (!value) return;
+		if (!value) {
+			return;
+		}
 
 		const optimisticRecipe: CreateRecipeItem = {
 			id: `temp-${crypto.randomUUID()}`,
 			type: mode,
 			label: value,
+			sourceValue: value,
 			title: null,
 			summary: null,
+			normalizedRecipe: null,
+			adjustedRecipe: null,
+			baseServings: null,
+			adjustedForServings: null,
+			materialChanges: [],
+			stepChanges: [],
+			adjustmentStatus: 'idle',
+			adjustmentAttemptCount: 0,
+			adjustmentError: null,
+			adjustmentConfirmedAt: null,
 			processingStatus: 'queued',
 			processingError: null,
+			requiresServingsInput: false,
 			createdAt: new Date().toISOString(),
 			updatedAt: new Date().toISOString(),
 		};
@@ -175,26 +247,14 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 
 		setUrlValue('');
 		setTextValue('');
-		onClose();
+		closeAddRecipe();
 
 		try {
-			const response = await fetch(`/api/plans/${plan.id}/recipes`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({
-					type: mode,
-					value,
-				}),
+			const payload = await addRecipeToPlanAction({
+				planId: plan.id,
+				type: mode,
+				value,
 			});
-
-			if (!response.ok) {
-				const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-				throw new Error(payload?.message ?? 'レシピの追加に失敗しました。');
-			}
-
-			const payload = (await response.json()) as { recipe: CreateRecipeItem };
 			scheduledRecipeIdsRef.current.add(payload.recipe.id);
 
 			setPlan((currentPlan) => ({
@@ -202,6 +262,10 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 				recipes: currentPlan.recipes.map((recipe) =>
 					recipe.id === optimisticRecipe.id ? payload.recipe : recipe,
 				),
+			}));
+			setServingsInputByRecipeId((currentMap) => ({
+				...currentMap,
+				[payload.recipe.id]: payload.recipe.baseServings?.toString() ?? '',
 			}));
 
 			window.setTimeout(() => {
@@ -214,8 +278,18 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 					recipe.id === optimisticRecipe.id
 						? {
 								...recipe,
+								adjustedForServings: null,
+								adjustedRecipe: null,
+								adjustmentAttemptCount: 0,
+								adjustmentConfirmedAt: null,
+								adjustmentError: null,
+								adjustmentStatus: 'idle',
+								materialChanges: [],
+								normalizedRecipe: null,
 								processingStatus: 'failed',
 								processingError: getErrorMessage(error),
+								requiresServingsInput: false,
+								stepChanges: [],
 							}
 						: recipe,
 				),
@@ -230,8 +304,16 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 				recipe.id === recipeId
 					? {
 							...recipe,
+							adjustedForServings: null,
+							adjustedRecipe: null,
+							adjustmentAttemptCount: 0,
+							adjustmentConfirmedAt: null,
+							adjustmentError: null,
+							adjustmentStatus: 'idle',
+							materialChanges: [],
 							processingStatus: 'queued',
 							processingError: null,
+							stepChanges: [],
 						}
 					: recipe,
 			),
@@ -241,8 +323,199 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 		void queueRecipeProcessing(recipeId);
 	};
 
+	const handleUpdateServings = async (recipeId: string): Promise<void> => {
+		const rawValue = servingsInputByRecipeId[recipeId]?.trim() ?? '';
+		const servings = Number.parseInt(rawValue, 10);
+
+		if (Number.isNaN(servings) || servings < 1) {
+			notice({
+				description: '1 以上の人数を入力してください。',
+				status: 'error',
+				title: '入力エラー',
+			});
+			return;
+		}
+
+		setSavingServingsRecipeIds((currentIds) => [...currentIds, recipeId]);
+
+		try {
+			const payload = await updateRecipeBaseServingsAction({
+				planId: plan.id,
+				recipeId,
+				servings,
+			});
+
+			setPlan((currentPlan) => {
+				const nextRecipes = currentPlan.recipes.map((recipe) =>
+					recipe.id === recipeId ? payload.recipe : recipe,
+				);
+
+				return {
+					...currentPlan,
+					canProceed: getCanProceed(nextRecipes),
+					recipes: nextRecipes,
+				};
+			});
+			setServingsInputByRecipeId((currentMap) => ({
+				...currentMap,
+				[recipeId]: payload.recipe.baseServings?.toString() ?? '',
+			}));
+		} catch (error) {
+			notice({
+				description: getErrorMessage(error),
+				status: 'error',
+				title: '人数を保存できませんでした',
+			});
+		} finally {
+			setSavingServingsRecipeIds((currentIds) =>
+				currentIds.filter((currentId) => currentId !== recipeId),
+			);
+		}
+	};
+
+	const handleRetryAdjustment = async (recipeId: string): Promise<void> => {
+		setRetryingAdjustmentRecipeIds((currentIds) => [...currentIds, recipeId]);
+
+		setPlan((currentPlan) => ({
+			...currentPlan,
+			canProceed: false,
+			recipes: currentPlan.recipes.map((recipe) =>
+				recipe.id === recipeId
+					? {
+							...recipe,
+							adjustedForServings: null,
+							adjustedRecipe: null,
+							adjustmentAttemptCount: 0,
+							adjustmentConfirmedAt: null,
+							adjustmentError: null,
+							adjustmentStatus: 'idle',
+							materialChanges: [],
+							stepChanges: [],
+						}
+					: recipe,
+			),
+		}));
+
+		try {
+			await retryRecipeAdjustmentAction({
+				planId: plan.id,
+				recipeId,
+			});
+			await refreshPlan();
+		} catch (error) {
+			await refreshPlan();
+			notice({
+				description: getErrorMessage(error),
+				status: 'error',
+				title: '再試行を開始できませんでした',
+			});
+		} finally {
+			setRetryingAdjustmentRecipeIds((currentIds) =>
+				currentIds.filter((currentId) => currentId !== recipeId),
+			);
+		}
+	};
+
+	const handleOpenEditRecipe = (recipe: CreateRecipeItem): void => {
+		setEditingRecipe(recipe);
+		setEditMode(recipe.type);
+		setEditUrlValue(recipe.type === 'url' ? recipe.sourceValue : '');
+		setEditTextValue(recipe.type === 'text' ? recipe.sourceValue : '');
+		openEditRecipe();
+	};
+
+	const handleUpdateRecipe = async (): Promise<void> => {
+		if (!editingRecipe) {
+			return;
+		}
+
+		const rawValue = editMode === 'url' ? editUrlValue : editTextValue;
+		const value = rawValue.trim();
+
+		if (!value) {
+			return;
+		}
+
+		setUpdatingRecipeIds((currentIds) => [...currentIds, editingRecipe.id]);
+
+		setPlan((currentPlan) => ({
+			...currentPlan,
+			canProceed: false,
+			recipes: currentPlan.recipes.map((recipe) =>
+				recipe.id === editingRecipe.id
+					? {
+							...recipe,
+							adjustedForServings: null,
+							adjustedRecipe: null,
+							adjustmentAttemptCount: 0,
+							adjustmentConfirmedAt: null,
+							adjustmentError: null,
+							adjustmentStatus: 'idle',
+							label: value,
+							materialChanges: [],
+							processingError: null,
+							processingStatus: 'queued',
+							requiresServingsInput: false,
+							sourceValue: value,
+							stepChanges: [],
+							summary: null,
+							title: null,
+							type: editMode,
+						}
+					: recipe,
+			),
+		}));
+
+		try {
+			await updateRecipeInputAction({
+				planId: plan.id,
+				recipeId: editingRecipe.id,
+				type: editMode,
+				value,
+			});
+			closeEditRecipe();
+			setEditingRecipe(null);
+			await refreshPlan();
+		} catch (error) {
+			await refreshPlan();
+			notice({
+				description: getErrorMessage(error),
+				status: 'error',
+				title: 'レシピを更新できませんでした',
+			});
+		} finally {
+			setUpdatingRecipeIds((currentIds) =>
+				currentIds.filter((currentId) => currentId !== editingRecipe.id),
+			);
+		}
+	};
+
+	const handleConfirmAdjustments = async (): Promise<void> => {
+		setConfirmingAdjustments(true);
+
+		try {
+			await confirmAdjustedRecipesAction({
+				planId: plan.id,
+			});
+			await refreshPlan();
+			notice({
+				description: 'この最適化済みレシピを工程生成の前提として使います。',
+				status: 'success',
+				title: '最適化結果を確定しました',
+			});
+		} catch (error) {
+			notice({
+				description: getErrorMessage(error),
+				status: 'error',
+				title: '最適化結果を確定できませんでした',
+			});
+		} finally {
+			setConfirmingAdjustments(false);
+		}
+	};
+
 	const handleDeleteRecipe = async (recipeId: string): Promise<void> => {
-		if (isTemporaryRecipeId(recipeId)) {
+		if (isTemporaryCreateRecipeId(recipeId)) {
 			return;
 		}
 
@@ -259,14 +532,10 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 		});
 
 		try {
-			const response = await fetch(`/api/plans/${plan.id}/recipes/${recipeId}`, {
-				method: 'DELETE',
+			await deleteRecipeFromPlanAction({
+				planId: plan.id,
+				recipeId,
 			});
-
-			if (!response.ok) {
-				const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-				throw new Error(payload?.message ?? 'レシピの削除に失敗しました。');
-			}
 		} catch (error) {
 			await refreshPlan();
 			notice({
@@ -292,55 +561,76 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 				</Flex>
 
 				<VStack align="stretch" gap="xs">
-					<Heading size="xl">レシピを登録</Heading>
-					<Text color="fg.subtle">献立に使うレシピ一覧</Text>
+					<Heading size="xl">レシピを登録して最適化</Heading>
+					<Text color="fg.subtle">
+						人数と設定を前提に、各レシピを工程生成しやすい形へ先に最適化します。
+					</Text>
+					<Flex align={{ base: 'start', md: 'center' }} gap="sm" wrap="wrap">
+						<Text color="fg.subtle" fontSize="sm">
+							人数: {plan.requestedServings}人分
+						</Text>
+						<Button as={NextLink} href="/create/servings" size="sm" variant="ghost">
+							人数を変更
+						</Button>
+					</Flex>
 				</VStack>
+
+				{readyForReview && !plan.canProceed ? (
+					<Card.Root borderColor="green.300" variant="outline">
+						<Card.Body gap="sm">
+							<Heading size="md">最適化結果を確認してください</Heading>
+							<Text color="fg.subtle" fontSize="sm">
+								各レシピの詳細から材料差分と手順の変更点を確認できます。問題なければ一括で確定して、次の工程生成に進みます。
+							</Text>
+							<Flex
+								align={{ base: 'stretch', md: 'center' }}
+								direction={{ base: 'column', md: 'row' }}
+								gap="sm"
+								justify="space-between"
+							>
+								<Text color="fg.subtle" fontSize="sm">
+									確認済み {confirmedRecipeCount} / {plan.recipes.length} 件
+								</Text>
+								<Button
+									loading={confirmingAdjustments}
+									onClick={() => void handleConfirmAdjustments()}
+								>
+									この最適化結果で確定する
+								</Button>
+							</Flex>
+						</Card.Body>
+					</Card.Root>
+				) : null}
 
 				<VStack align="stretch" gap="md">
 					<For each={plan.recipes}>
 						{(recipe) => (
-							<Card.Root key={recipe.id} variant="outline">
-								<Card.Body gap="sm">
-									<Flex align="center" w="full" gap="sm" justify="space-between">
-										<Flex align="center" gap="sm" wrap="wrap">
-											<Badge
-												colorScheme={recipe.type === 'url' ? 'blue' : 'amber'}
-												variant="subtle"
-											>
-												{recipe.type === 'url' ? 'URL' : 'TEXT'}
-											</Badge>
-											<RecipeStatus recipe={recipe} onRetry={handleRetry} />
-										</Flex>
-										{isTemporaryRecipeId(recipe.id) ? null : (
-											<Button
-												colorScheme="red"
-												loading={deletingRecipeIds.includes(recipe.id)}
-												size="sm"
-												variant="ghost"
-												onClick={() => void handleDeleteRecipe(recipe.id).catch(() => undefined)}
-											>
-												削除
-											</Button>
-										)}
-									</Flex>
-
-									{recipe.title ? <Heading size="md">{recipe.title}</Heading> : null}
-
-									<Text
-										color={recipe.title ? 'fg.subtle' : 'inherit'}
-										lineClamp={2}
-										whiteSpace="pre-wrap"
-									>
-										{recipe.label}
-									</Text>
-
-									{recipe.summary ? <Text whiteSpace="pre-wrap">{recipe.summary}</Text> : null}
-
-									{recipe.processingError ? (
-										<Text color="danger">{recipe.processingError}</Text>
-									) : null}
-								</Card.Body>
-							</Card.Root>
+							<RecipeCard
+								key={recipe.id}
+								deleting={deletingRecipeIds.includes(recipe.id)}
+								editing={updatingRecipeIds.includes(recipe.id)}
+								recipe={recipe}
+								retryingAdjustment={retryingAdjustmentRecipeIds.includes(recipe.id)}
+								savingServings={savingServingsRecipeIds.includes(recipe.id)}
+								servingsValue={servingsInputByRecipeId[recipe.id] ?? ''}
+								onDelete={(recipeId) => {
+									void handleDeleteRecipe(recipeId).catch(() => undefined);
+								}}
+								onEdit={handleOpenEditRecipe}
+								onRetry={handleRetry}
+								onRetryAdjustment={(recipeId) => {
+									void handleRetryAdjustment(recipeId);
+								}}
+								onSaveServings={(recipeId) => {
+									void handleUpdateServings(recipeId);
+								}}
+								onServingsChange={(recipeId, value) =>
+									setServingsInputByRecipeId((currentMap) => ({
+										...currentMap,
+										[recipeId]: value,
+									}))
+								}
+							/>
 						)}
 					</For>
 				</VStack>
@@ -351,75 +641,56 @@ export const CreatePageClient = ({ initialPlan }: { initialPlan: CreatePlanData 
 					gap="md"
 					justify="space-between"
 				>
-					<Button onClick={onOpen} variant="outline">
+					<Button onClick={openAddRecipe} variant="outline">
 						レシピを追加
 					</Button>
 
 					<VStack align={{ base: 'stretch', md: 'end' }} gap="xs">
 						{plan.canProceed ? (
-							<Button as={NextLink} href="/plan" variant="solid">
-								planに進む
+							<Button as={NextLink} href={`/plans/${plan.id}/edit`} variant="solid">
+								工程作成へ進む
 							</Button>
 						) : (
 							<Button disabled variant="solid">
-								planに進む
+								工程作成へ進む
 							</Button>
 						)}
 						<Text color="fg.subtle" fontSize="sm">
-							抽出完了後に plan へ進めます。
+							抽出とレシピ最適化の確認が完了すると、工程作成に進めます。
 						</Text>
 					</VStack>
 				</Flex>
 
-				<Modal.Root open={open} size="lg" onClose={onClose}>
-					<Modal.Overlay backdropFilter="blur(4px)" />
-					<Modal.Content mx="md" w="calc(100% - 2rem)">
-						<Modal.Header px="lg" pt="lg">
-							<Modal.Title>レシピを追加</Modal.Title>
-						</Modal.Header>
+				<AddRecipeModal
+					mode={mode}
+					open={isAddRecipeOpen}
+					textValue={textValue}
+					title="レシピを追加"
+					submitLabel="追加する"
+					urlValue={urlValue}
+					onClose={closeAddRecipe}
+					onModeChange={setMode}
+					onSubmit={() => void handleAddRecipe()}
+					onTextChange={setTextValue}
+					onUrlChange={setUrlValue}
+				/>
 
-						<Modal.Body px="lg" py="md">
-							<VStack align="stretch" gap="md">
-								<SegmentedControl.Root
-									items={modeItems}
-									value={mode}
-									onChange={(value) => setMode(value as RecipeInputMode)}
-								/>
-
-								{mode === 'url' ? (
-									<VStack align="stretch" gap="sm">
-										<Text fontWeight="medium">URL</Text>
-										<Input
-											aria-label="レシピURL"
-											placeholder="https://example.com/recipe"
-											value={urlValue}
-											onChange={(event) => setUrlValue(event.target.value)}
-										/>
-									</VStack>
-								) : (
-									<VStack align="stretch" gap="sm">
-										<Text fontWeight="medium">Text</Text>
-										<Textarea
-											aria-label="レシピテキスト"
-											autosize
-											minH="9rem"
-											placeholder="材料や手順のメモを貼り付けてください"
-											value={textValue}
-											onChange={(event) => setTextValue(event.target.value)}
-										/>
-									</VStack>
-								)}
-							</VStack>
-						</Modal.Body>
-
-						<Modal.Footer px="lg" pb="lg" pt="sm">
-							<Button variant="ghost" onClick={onClose}>
-								閉じる
-							</Button>
-							<Button onClick={() => void handleAddRecipe()}>追加する</Button>
-						</Modal.Footer>
-					</Modal.Content>
-				</Modal.Root>
+				<AddRecipeModal
+					mode={editMode}
+					open={isEditRecipeOpen}
+					textValue={editTextValue}
+					title="レシピを変更"
+					submitLabel="変更して再試行"
+					urlValue={editUrlValue}
+					onClose={() => {
+						closeEditRecipe();
+						setEditingRecipe(null);
+					}}
+					onModeChange={setEditMode}
+					onSubmit={() => void handleUpdateRecipe()}
+					onTextChange={setEditTextValue}
+					onUrlChange={setEditUrlValue}
+				/>
 			</VStack>
 		</Flex>
 	);

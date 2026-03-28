@@ -1,3 +1,21 @@
+import type { PlanningSettings } from '@/lib/planning-settings';
+
+export type RecipeSourceMaterialAmountSummary = {
+	text?: string | null;
+	value?: number | null;
+	min?: number | null;
+	max?: number | null;
+	unit?: string | null;
+};
+
+export type RecipeSourceMaterialSummary = {
+	rawLine?: string | null;
+	name: string;
+	amount?: RecipeSourceMaterialAmountSummary | null;
+	preparation?: string | null;
+	optional?: boolean | null;
+};
+
 export type RecipeSourceRawContent = {
 	inputText?: string;
 	fetchedFrom?: string;
@@ -6,6 +24,7 @@ export type RecipeSourceRawContent = {
 	description?: string;
 	servingsText?: string | null;
 	ingredientsText?: string[];
+	materials?: RecipeSourceMaterialSummary[];
 	instructionsText?: string[];
 	metadata?: Record<string, unknown>;
 };
@@ -16,6 +35,10 @@ export type NormalizedIngredient = {
 	id: string;
 	name: string;
 	amount?: string;
+	amountValue?: number;
+	amountMin?: number;
+	amountMax?: number;
+	unit?: string;
 	preparation?: string;
 	optional?: boolean;
 	substitutions?: string[];
@@ -40,6 +63,105 @@ export type NormalizedRecipe = {
 	metadata?: Record<string, unknown>;
 };
 
+export type RecipeAdjustmentStatus =
+	| 'idle'
+	| 'needs_base_servings'
+	| 'adjusting'
+	| 'completed'
+	| 'action_required';
+
+export type RecipeStepChangeType =
+	| 'quantity'
+	| 'heat'
+	| 'time'
+	| 'batching'
+	| 'equipment'
+	| 'sequence'
+	| 'safety'
+	| 'wording';
+
+export type RecipeStepChangeConfidence = 'low' | 'medium' | 'high';
+
+export type RecipeStepChange = {
+	stepId: string;
+	changeType: RecipeStepChangeType;
+	reason: string;
+	confidence: RecipeStepChangeConfidence;
+};
+
+export type RecipeMaterialChangeType =
+	| 'keep'
+	| 'scale'
+	| 'substitute'
+	| 'add'
+	| 'remove'
+	| 'merge'
+	| 'split';
+
+export type RecipeIngredientDecision = {
+	ingredientId?: string | null;
+	ingredientName: string;
+	needsChange: boolean;
+	changeType: RecipeMaterialChangeType;
+	reason: string;
+	confidence: RecipeStepChangeConfidence;
+	nextIngredientIds?: string[];
+};
+
+export type RecipeMaterialChange = {
+	changeType: RecipeMaterialChangeType;
+	ingredientId?: string | null;
+	ingredientName: string;
+	nextIngredientId?: string | null;
+	nextIngredientName?: string | null;
+	reason: string;
+	confidence: RecipeStepChangeConfidence;
+};
+
+export type PlanMaterial = {
+	id: string;
+	name: string;
+	amount?: string;
+	amountValue?: number;
+	amountMin?: number;
+	amountMax?: number;
+	unit?: string;
+	recipeSourceId?: string;
+	sourceIngredientId?: string;
+};
+
+export type PlanGenerationRecipeInput = {
+	recipeSourceId: string;
+	sourceType: 'url' | 'manual';
+	sourceUrl: string | null;
+	title: string;
+	summary: string | null;
+	normalizedRecipe: NormalizedRecipe;
+};
+
+export type PlanGenerationOptions = {
+	requestedServings: number;
+	availableEquipment: string[];
+	constraints: string[];
+};
+
+export type PlanGenerationInput = {
+	planId: string;
+	title: string;
+	requestedServings: number;
+	availableEquipment: string[];
+	constraints: string[];
+	planningSettings: PlanningSettings;
+	materials: PlanMaterial[];
+	recipes: PlanGenerationRecipeInput[];
+};
+
+export type PlanImprovementInput = {
+	plannerInput: PlanGenerationInput;
+	currentPlan: PlanDocument;
+	improvementRequest: string;
+};
+
 export type PlanTimer = {
 	id: string;
 	label: string;
@@ -47,32 +169,48 @@ export type PlanTimer = {
 	autoStart?: boolean;
 };
 
-export type PlanStepIngredientRef = {
-	ingredientId: string;
-	preparation?: string;
-	quantity?: string;
+export type PlanStepKind = 'prep' | 'cook' | 'finish' | 'wait' | 'cleanup';
+
+export type PlanStepTimeline = {
+	start: number;
+	end: number;
+};
+
+export type PlanStepResourceRequirements = Record<string, number>;
+
+export type PlanMetadata = {
+	availableEquipment: string[];
+	constraints: string[];
+	planningSettings?: PlanningSettings;
+	recipeSourceIds: string[];
 };
 
 export type PlanStep = {
 	id: string;
-	title: string;
-	description: string;
-	dependsOn: string[];
-	estimatedMinutes: number;
+	label: string;
+	instructions: string;
+	timeline: PlanStepTimeline;
+	time: number;
+	after: string[];
+	kind: PlanStepKind;
 	recipeSourceId?: string;
-	recovery?: string;
-	ingredients?: PlanStepIngredientRef[];
+	req?: PlanStepResourceRequirements;
+	uses?: string[];
+	slack?: number;
+	notesForUser?: string[];
+	recoveryTips?: string[];
 	outputs?: string[];
 	timers?: PlanTimer[];
 	tags?: string[];
 };
 
 export type PlanDocument = {
-	version: number;
+	version: 2;
 	title: string;
 	servings: number;
+	materials: PlanMaterial[];
 	steps: PlanStep[];
-	metadata?: Record<string, unknown>;
+	metadata?: PlanMetadata;
 };
 
 export type PlanPatchOperation = {

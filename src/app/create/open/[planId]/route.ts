@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { activeCreatePlanCookieName, getRequestActor } from '@/lib/create-session';
+import { isProduction } from '@/lib/env';
 import { getOwnedDraftPlan } from '@/lib/plans/queries';
 
 const cookieOptions = {
@@ -8,7 +9,7 @@ const cookieOptions = {
 	maxAge: 60 * 60 * 24 * 30,
 	path: '/',
 	sameSite: 'lax' as const,
-	secure: process.env.NODE_ENV === 'production',
+	secure: isProduction,
 };
 
 export async function GET(request: Request, context: { params: Promise<{ planId: string }> }) {
