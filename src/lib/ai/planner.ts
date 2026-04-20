@@ -3,16 +3,19 @@ import 'server-only';
 import { createOpenAI } from '@ai-sdk/openai';
 import { Output, stepCountIs, ToolLoopAgent, tool } from 'ai';
 import { z } from 'zod';
+import {
+	fetchUrlTextWithTavily,
+	tavilyFetchUrlInputSchema,
+	tavilyWebSearchInputSchema,
+	webSearchWithTavily,
+} from '@/lib/ai/tavily';
 import { getRequiredEnv } from '@/lib/env';
-import { assertSafePublicHttpUrl } from '@/lib/network/safe-url';
 import { planDocumentSchema } from '@/lib/plans/schema';
 import type { PlanDocument, PlanGenerationInput, PlanImprovementInput } from '@/lib/plans/types';
 
 const openai = createOpenAI({
 	apiKey: getRequiredEnv('OPENAI_API_KEY'),
 });
-const tavilyApiKey = getRequiredEnv('TAVILY_API_KEY');
-const tavilyBaseUrl = 'https://api.tavily.com';
 
 const plannerReqSchema = z
 	.object({})
@@ -112,113 +115,18 @@ const finalizePlanDocument = ({
 		metadata: buildPlanMetadata(input),
 	});
 
-const webSearchToolInputSchema = z.object({
-	query: z.string().trim().min(1).max(240),
-	reason: z.string().trim().min(1).max(120),
-	includeDomains: z.array(z.string().trim().min(1).max(120)).max(10).optional(),
-	maxResults: z.number().int().min(1).max(8).optional(),
-});
-
-const fetchUrlToolInputSchema = z.object({
-	url: z.url(),
-	reason: z.string().trim().min(1).max(120),
-	query: z.string().trim().min(1).max(240).optional(),
-});
-
-const tavilySearchResultSchema = z.object({
-	title: z.string().catch(''),
-	url: z.url(),
-	content: z.string().catch(''),
-	raw_content: z.string().nullable().optional(),
-	score: z.number().nullable().optional(),
-	published_date: z.string().nullable().optional(),
-});
-
-const tavilySearchResponseSchema = z.object({
-	answer: z.string().nullable().optional(),
-	results: z.array(tavilySearchResultSchema),
-	request_id: z.string().optional(),
-	usage: z
-		.object({
-			credits: z.number().optional(),
-		})
-		.optional(),
-});
-
-const tavilyExtractResultSchema = z.object({
-	url: z.url(),
-	raw_content: z.string(),
-});
-
-const tavilyExtractResponseSchema = z.object({
-	results: z.array(tavilyExtractResultSchema),
-	request_id: z.string().optional(),
-});
-
-const truncateText = (value: string, maxLength: number): string =>
-	value.length <= maxLength ? value : value.slice(0, maxLength);
-
-const postTavily = async <TSchema extends z.ZodType>({
-	path,
-	body,
-	schema,
-}: {
-	path: '/search' | '/extract';
-	body: Record<string, unknown>;
-	schema: TSchema;
-}): Promise<z.infer<TSchema>> => {
-	const response = await fetch(`${tavilyBaseUrl}${path}`, {
-		cache: 'no-store',
-		method: 'POST',
-		headers: {
-			Authorization: `Bearer ${tavilyApiKey}`,
-			'Content-Type': 'application/json',
-		},
-		body: JSON.stringify(body),
-	});
-
-	if (!response.ok) {
-		throw new Error(
-			`Tavily ${path} failed (${response.status}): ${truncateText(await response.text(), 500)}`,
-		);
-	}
-
-	return schema.parse(await response.json());
-};
-
 const createWebSearchTool = () =>
 	tool({
 		description:
 			'Search the public web with Tavily when the provided recipes are insufficient and you need outside cooking or food-safety context.',
-		inputSchema: webSearchToolInputSchema,
+		inputSchema: tavilyWebSearchInputSchema,
 		execute: async ({ query, includeDomains, maxResults }) => {
-			const response = await postTavily({
-				path: '/search',
-				body: {
-					query,
-					search_depth: 'basic',
-					topic: 'general',
-					max_results: maxResults ?? 5,
-					include_answer: false,
-					include_raw_content: false,
-					include_domains: includeDomains,
-				},
-				schema: tavilySearchResponseSchema,
-			});
-
-			return {
-				answer: response.answer ?? null,
-				creditsUsed: response.usage?.credits ?? null,
+			return webSearchWithTavily({
+				includeDomains,
+				maxResults,
 				query,
-				requestId: response.request_id ?? null,
-				results: response.results.map((result) => ({
-					content: truncateText(result.content || result.raw_content || '', 1200),
-					publishedDate: result.published_date ?? null,
-					score: result.score ?? null,
-					title: result.title || result.url,
-					url: result.url,
-				})),
-			};
+				reason: 'planner_web_search',
+			});
 		},
 	});
 
@@ -226,32 +134,13 @@ const createFetchUrlTool = () =>
 	tool({
 		description:
 			'Fetch and extract plain text from a specific public URL with Tavily after you have identified a promising source.',
-		inputSchema: fetchUrlToolInputSchema,
+		inputSchema: tavilyFetchUrlInputSchema,
 		execute: async ({ url, query }) => {
-			const safeUrl = await assertSafePublicHttpUrl(url);
-			const response = await postTavily({
-				path: '/extract',
-				body: {
-					urls: [safeUrl.toString()],
-					extract_depth: 'basic',
-					format: 'text',
-					include_images: false,
-					include_favicon: false,
-					query,
-				},
-				schema: tavilyExtractResponseSchema,
+			return fetchUrlTextWithTavily({
+				query,
+				reason: 'planner_fetch_url',
+				url,
 			});
-			const [result] = response.results;
-
-			if (!result) {
-				throw new Error('Tavily extract returned no results.');
-			}
-
-			return {
-				requestId: response.request_id ?? null,
-				text: truncateText(result.raw_content, 12000),
-				url: result.url,
-			};
 		},
 	});
 

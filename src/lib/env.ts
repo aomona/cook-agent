@@ -4,6 +4,7 @@ const requiredEnvNames = [
 	'DATABASE_URL',
 	'GITHUB_CLIENT_ID',
 	'GITHUB_CLIENT_SECRET',
+	'GEMINI_API_KEY',
 	'OPENAI_API_KEY',
 	'TAVILY_API_KEY',
 ] as const;
