@@ -168,6 +168,8 @@ export const startCookingSession = async ({
 			planVersionId: plan.activeVersionId,
 			userId,
 			status: 'active',
+			generationStatus: 'ready',
+			kitchenConstraints: planDocument.metadata?.constraints ?? [],
 			currentStepId: firstStep?.id ?? null,
 			startedAt: new Date(),
 		})

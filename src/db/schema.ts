@@ -63,6 +63,15 @@ export const sessionStatusEnum = pgEnum('session_status', [
 	'abandoned',
 ]);
 
+export const generationStatusEnum = pgEnum('generation_status', [
+	'queued',
+	'fetching',
+	'extracting',
+	'planning',
+	'ready',
+	'failed',
+]);
+
 export const sessionEventTypeEnum = pgEnum('session_event_type', [
 	'progress',
 	'delay',
@@ -228,6 +237,12 @@ export const cookingSessions = pgTable(
 			.notNull()
 			.references(() => user.id, { onDelete: 'cascade' }),
 		status: sessionStatusEnum('status').notNull().default('not_started'),
+		generationStatus: generationStatusEnum('generation_status')
+			.$type<'queued' | 'fetching' | 'extracting' | 'planning' | 'ready' | 'failed'>()
+			.notNull()
+			.default('queued'),
+		generationError: text('generation_error'),
+		kitchenConstraints: jsonb('kitchen_constraints').$type<string[]>().notNull(),
 		currentStepId: text('current_step_id'),
 		startedAt: timestamp('started_at', { withTimezone: true }),
 		completedAt: timestamp('completed_at', { withTimezone: true }),
