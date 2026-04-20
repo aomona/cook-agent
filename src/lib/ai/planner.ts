@@ -120,12 +120,12 @@ const createWebSearchTool = () =>
 		description:
 			'Search the public web with Tavily when the provided recipes are insufficient and you need outside cooking or food-safety context.',
 		inputSchema: tavilyWebSearchInputSchema,
-		execute: async ({ query, includeDomains, maxResults }) => {
+		execute: async ({ query, reason, includeDomains, maxResults }) => {
 			return webSearchWithTavily({
 				includeDomains,
 				maxResults,
 				query,
-				reason: 'planner_web_search',
+				reason,
 			});
 		},
 	});

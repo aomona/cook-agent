@@ -423,9 +423,11 @@ export const buildCookRuntimeLiveSessionPayload = async ({
 		console.error('Failed to load cook runtime snapshot for live payload.', error);
 	}
 
-	const systemInstructionText = snapshot
-		? buildSystemInstruction(snapshot)
-		: buildFallbackSystemInstruction(planId);
+	if (!snapshot) {
+		throw new Error('No owned snapshot found for plan.');
+	}
+
+	const systemInstructionText = buildSystemInstruction(snapshot);
 	const liveConfig = {
 		contextWindowCompression: { slidingWindow: {} },
 		inputAudioTranscription: {},
@@ -439,7 +441,7 @@ export const buildCookRuntimeLiveSessionPayload = async ({
 		toolConfig: {
 			functionCallingConfig: {
 				allowedFunctionNames,
-				mode: FunctionCallingConfigMode.ANY,
+				mode: FunctionCallingConfigMode.AUTO,
 			},
 		},
 		tools: [{ functionDeclarations: [...functionDeclarations] }],
@@ -484,7 +486,22 @@ const requireSessionId = async ({
 	providedSessionId?: string;
 	userId: string;
 }): Promise<string> => {
-	const sessionId = providedSessionId ?? (await getActiveSessionId({ planId, userId }));
+	if (providedSessionId) {
+		// When sessionId is provided, verify it belongs to the requested plan
+		const snapshot = await getOwnedCookSessionSnapshotBySessionId(providedSessionId, userId);
+
+		if (!snapshot) {
+			throw new Error('Cooking session not found.');
+		}
+
+		if (snapshot.plan.id !== planId) {
+			throw new Error('Session does not belong to the requested plan.');
+		}
+
+		return providedSessionId;
+	}
+
+	const sessionId = await getActiveSessionId({ planId, userId });
 
 	if (!sessionId) {
 		throw new Error('Active cooking session not found.');
@@ -505,7 +522,17 @@ const requireCurrentStepId = async ({
 	const snapshot = providedSessionId
 		? await getOwnedCookSessionSnapshotBySessionId(providedSessionId, userId)
 		: await getOwnedCookSessionSnapshotByPlanId(planId, userId);
-	const stepId = snapshot?.session?.currentStepId ?? snapshot?.currentStep?.id ?? null;
+
+	if (!snapshot) {
+		throw new Error('Cooking session not found.');
+	}
+
+	// When sessionId is provided, verify it belongs to the requested plan
+	if (providedSessionId && snapshot.plan.id !== planId) {
+		throw new Error('Session does not belong to the requested plan.');
+	}
+
+	const stepId = snapshot.session?.currentStepId ?? snapshot.currentStep?.id ?? null;
 
 	if (!stepId) {
 		throw new Error('Current cooking step not found.');

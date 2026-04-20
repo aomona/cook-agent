@@ -159,7 +159,7 @@ export const useCookLiveSession = ({
 		const functionResponses: {
 			id: string;
 			name: string;
-			response: { result: unknown };
+			response: { result?: unknown; error?: boolean; message?: string };
 		}[] = [];
 
 		for (const functionCall of functionCalls) {
@@ -168,34 +168,58 @@ export const useCookLiveSession = ({
 			}
 
 			appendEntry({ role: 'tool', text: `補助ツール実行: ${functionCall.name}` });
-			const response = await fetch(`/api/plans/${planId}/cook/tool`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({
-					args: functionCall.args ?? {},
-					sessionId: sessionIdRef.current ?? undefined,
-					toolName: functionCall.name,
-				}),
-			});
-			const payload = (await response.json()) as { message?: string; result?: unknown };
 
-			if (!response.ok) {
-				throw new Error(payload.message ?? `Tool failed: ${functionCall.name}`);
+			try {
+				const response = await fetch(`/api/plans/${planId}/cook/tool`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({
+						args: functionCall.args ?? {},
+						sessionId: sessionIdRef.current ?? undefined,
+						toolName: functionCall.name,
+					}),
+				});
+				const payload = (await response.json()) as { message?: string; result?: unknown };
+
+				if (!response.ok) {
+					functionResponses.push({
+						id: functionCall.id,
+						name: functionCall.name,
+						response: {
+							error: true,
+							message: payload.message ?? `Tool failed: ${functionCall.name}`,
+						},
+					});
+				} else {
+					functionResponses.push({
+						id: functionCall.id,
+						name: functionCall.name,
+						response: {
+							result: payload.result ?? null,
+						},
+					});
+				}
+			} catch (error) {
+				functionResponses.push({
+					id: functionCall.id,
+					name: functionCall.name,
+					response: {
+						error: true,
+						message: error instanceof Error ? error.message : `Tool failed: ${functionCall.name}`,
+					},
+				});
 			}
-
-			functionResponses.push({
-				id: functionCall.id,
-				name: functionCall.name,
-				response: {
-					result: payload.result ?? null,
-				},
-			});
 		}
 
 		session.sendToolResponse({ functionResponses });
-		await refreshSnapshot();
+
+		try {
+			await refreshSnapshot();
+		} catch {
+			// Best-effort refresh, do not prevent sending tool responses
+		}
 	};
 
 	const handleMessage = (message: LiveServerMessage) => {
@@ -317,24 +341,29 @@ export const useCookLiveSession = ({
 
 		setMicrophoneState('requesting');
 
+		let stream: MediaStream | null = null;
+		let audioContext: AudioContext | null = null;
+		let source: MediaStreamAudioSourceNode | null = null;
+		let processor: ScriptProcessorNode | null = null;
+
 		try {
-			const stream = await navigator.mediaDevices.getUserMedia({
+			stream = await navigator.mediaDevices.getUserMedia({
 				audio: {
 					autoGainControl: true,
 					echoCancellation: true,
 					noiseSuppression: true,
 				},
 			});
-			const audioContext = new AudioContext();
+			audioContext = new AudioContext();
 			await audioContext.resume();
-			const source = audioContext.createMediaStreamSource(stream);
-			const processor = audioContext.createScriptProcessor(4096, 1, 1);
+			source = audioContext.createMediaStreamSource(stream);
+			processor = audioContext.createScriptProcessor(4096, 1, 1);
 
 			microphoneEnabledRef.current = true;
 			processor.onaudioprocess = (event) => {
 				const activeSession = sessionRef.current;
 
-				if (!activeSession || !microphoneEnabledRef.current) {
+				if (!activeSession || !microphoneEnabledRef.current || !audioContext) {
 					return;
 				}
 
@@ -365,6 +394,20 @@ export const useCookLiveSession = ({
 			setMicrophoneState('on');
 			appendEntry({ role: 'status', text: 'マイクを有効にしました。話しかけてください。' });
 		} catch (error) {
+			// Cleanup acquired resources on failure
+			if (stream) {
+				stream.getTracks().forEach((track) => track.stop());
+			}
+			if (source) {
+				source.disconnect();
+			}
+			if (processor) {
+				processor.disconnect();
+			}
+			if (audioContext) {
+				void audioContext.close();
+			}
+
 			setMicrophoneState('off');
 			setLatestError(error instanceof Error ? error.message : 'マイクを開始できませんでした。');
 			appendEntry({ role: 'status', text: 'マイクを開始できませんでした。' });

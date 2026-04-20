@@ -23,6 +23,10 @@ export async function POST(_: Request, context: { params: Promise<{ planId: stri
 			userId: actor.userId,
 		});
 
+		if (!payload.snapshot) {
+			return Response.json({ message: 'Not found' }, { status: 404 });
+		}
+
 		return Response.json(payload);
 	} catch (error) {
 		console.error('Failed to build cook live payload.', error);

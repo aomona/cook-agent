@@ -242,7 +242,7 @@ export const cookingSessions = pgTable(
 			.notNull()
 			.default('queued'),
 		generationError: text('generation_error'),
-		kitchenConstraints: jsonb('kitchen_constraints').$type<string[]>().notNull(),
+		kitchenConstraints: jsonb('kitchen_constraints').$type<string[]>().notNull().default([]),
 		currentStepId: text('current_step_id'),
 		startedAt: timestamp('started_at', { withTimezone: true }),
 		completedAt: timestamp('completed_at', { withTimezone: true }),
@@ -260,6 +260,9 @@ export const cookingSessions = pgTable(
 			foreignColumns: [planVersions.planId, planVersions.id],
 		}).onDelete('restrict'),
 		index('cooking_sessions_plan_id_created_at_idx').on(table.planId, table.createdAt),
+		uniqueIndex('cooking_sessions_plan_user_active_unique')
+			.on(table.planId, table.userId)
+			.where(sql`status IN ('active', 'paused')`),
 	],
 );
 
@@ -304,6 +307,9 @@ export const sessionTimers = pgTable(
 		index('session_timers_session_id_status_idx').on(table.sessionId, table.status),
 		index('session_timers_session_id_plan_timer_id_idx').on(table.sessionId, table.planTimerId),
 		index('session_timers_session_id_step_id_idx').on(table.sessionId, table.stepId),
+		uniqueIndex('session_timers_session_step_plantimer_running_unique')
+			.on(table.sessionId, table.stepId, table.planTimerId)
+			.where(sql`status = 'running'`),
 	],
 );
 

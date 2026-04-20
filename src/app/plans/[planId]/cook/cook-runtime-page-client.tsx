@@ -62,8 +62,9 @@ export const CookRuntimePageClient = ({
 	const [isPending, setIsPending] = useState(false);
 	const [isTranscriptExpanded, setIsTranscriptExpanded] = useState(false);
 	const currentMaterials = getStepMaterialLabels(snapshot);
-	const primaryTimer = snapshot.timers[0] ?? null;
-	const secondaryTimers = snapshot.timers.slice(1, 4);
+	const activeTimers = snapshot.timers.filter((t) => t.status !== 'done' && t.status !== 'cancelled');
+	const primaryTimer = activeTimers[0] ?? null;
+	const secondaryTimers = activeTimers.slice(1, 4);
 	const {
 		connect,
 		connectionState,

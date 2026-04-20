@@ -40,6 +40,8 @@ const tavilyExtractResponseSchema = z.object({
 const truncateText = (value: string, maxLength: number): string =>
 	value.length <= maxLength ? value : value.slice(0, maxLength);
 
+const TAVILY_TIMEOUT_MS = 30000;
+
 const postTavily = async <TSchema extends z.ZodType>({
 	path,
 	body,
@@ -49,23 +51,39 @@ const postTavily = async <TSchema extends z.ZodType>({
 	body: Record<string, unknown>;
 	schema: TSchema;
 }): Promise<z.infer<TSchema>> => {
-	const response = await fetch(`${tavilyBaseUrl}${path}`, {
-		cache: 'no-store',
-		method: 'POST',
-		headers: {
-			Authorization: `Bearer ${tavilyApiKey}`,
-			'Content-Type': 'application/json',
-		},
-		body: JSON.stringify(body),
-	});
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), TAVILY_TIMEOUT_MS);
 
-	if (!response.ok) {
-		throw new Error(
-			`Tavily ${path} failed (${response.status}): ${truncateText(await response.text(), 500)}`,
-		);
+	try {
+		const response = await fetch(`${tavilyBaseUrl}${path}`, {
+			cache: 'no-store',
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${tavilyApiKey}`,
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify(body),
+			signal: controller.signal,
+		});
+
+		clearTimeout(timeoutId);
+
+		if (!response.ok) {
+			throw new Error(
+				`Tavily ${path} failed (${response.status}): ${truncateText(await response.text(), 500)}`,
+			);
+		}
+
+		return schema.parse(await response.json());
+	} catch (error) {
+		clearTimeout(timeoutId);
+
+		if (error instanceof Error && error.name === 'AbortError') {
+			throw new Error(`Tavily ${path} request timed out after ${TAVILY_TIMEOUT_MS}ms`);
+		}
+
+		throw error;
 	}
-
-	return schema.parse(await response.json());
 };
 
 export const tavilyWebSearchInputSchema = z.object({

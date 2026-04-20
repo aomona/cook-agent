@@ -23,6 +23,10 @@ export async function POST(request: Request) {
 			userId: actor.userId,
 		});
 
+		if (!livePayload.snapshot) {
+			return Response.json({ message: 'Not found' }, { status: 403 });
+		}
+
 		return Response.json(livePayload);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Failed to build live session.';
