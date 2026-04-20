@@ -452,7 +452,6 @@ export const buildCookRuntimeLiveSessionPayload = async ({
 				model: geminiLiveModel,
 				config: liveConfig,
 			},
-			lockAdditionalFields: [],
 		},
 	});
 
