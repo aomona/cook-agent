@@ -1,6 +1,12 @@
 import 'server-only';
 
-import { GoogleGenAI, Modality } from '@google/genai';
+import {
+	FunctionCallingConfigMode,
+	type FunctionDeclaration,
+	GoogleGenAI,
+	Modality,
+	Type,
+} from '@google/genai';
 import { z } from 'zod';
 import {
 	fetchUrlTextWithTavily,
@@ -37,12 +43,12 @@ const getGeminiClient = () =>
 		apiKey: getRequiredEnv('GEMINI_API_KEY'),
 	});
 
-const functionDeclarations = [
+const functionDeclarations: FunctionDeclaration[] = [
 	{
 		name: 'get_runtime_snapshot',
 		description: 'Get the latest cooking runtime state before making decisions.',
 		parameters: {
-			type: 'OBJECT',
+			type: Type.OBJECT,
 			properties: {},
 		},
 	},
@@ -50,7 +56,7 @@ const functionDeclarations = [
 		name: 'start_cooking_session',
 		description: 'Start or resume the cooking session for the current plan.',
 		parameters: {
-			type: 'OBJECT',
+			type: Type.OBJECT,
 			properties: {},
 		},
 	},
@@ -58,7 +64,7 @@ const functionDeclarations = [
 		name: 'pause_cooking_session',
 		description: 'Pause the current cooking session.',
 		parameters: {
-			type: 'OBJECT',
+			type: Type.OBJECT,
 			properties: {},
 		},
 	},
@@ -66,7 +72,7 @@ const functionDeclarations = [
 		name: 'resume_cooking_session',
 		description: 'Resume the current cooking session.',
 		parameters: {
-			type: 'OBJECT',
+			type: Type.OBJECT,
 			properties: {},
 		},
 	},
@@ -74,7 +80,7 @@ const functionDeclarations = [
 		name: 'complete_current_step',
 		description: 'Mark the current cooking step as completed and advance to the next step.',
 		parameters: {
-			type: 'OBJECT',
+			type: Type.OBJECT,
 			properties: {},
 		},
 	},
@@ -82,10 +88,10 @@ const functionDeclarations = [
 		name: 'move_to_step',
 		description: 'Move the active session to a specific step in the plan.',
 		parameters: {
-			type: 'OBJECT',
+			type: Type.OBJECT,
 			properties: {
 				stepId: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'The plan step id to switch to.',
 				},
 			},
@@ -96,14 +102,14 @@ const functionDeclarations = [
 		name: 'start_timer',
 		description: 'Start a plan timer for a given step.',
 		parameters: {
-			type: 'OBJECT',
+			type: Type.OBJECT,
 			properties: {
 				stepId: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'The step id that owns this timer.',
 				},
 				timerId: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'The timer id from the current plan step.',
 				},
 			},
@@ -114,10 +120,10 @@ const functionDeclarations = [
 		name: 'pause_timer',
 		description: 'Pause a running session timer.',
 		parameters: {
-			type: 'OBJECT',
+			type: Type.OBJECT,
 			properties: {
 				timerRowId: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'The session timer row id.',
 				},
 			},
@@ -128,10 +134,10 @@ const functionDeclarations = [
 		name: 'resume_timer',
 		description: 'Resume a paused session timer.',
 		parameters: {
-			type: 'OBJECT',
+			type: Type.OBJECT,
 			properties: {
 				timerRowId: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'The session timer row id.',
 				},
 			},
@@ -142,10 +148,10 @@ const functionDeclarations = [
 		name: 'cancel_timer',
 		description: 'Cancel an active session timer.',
 		parameters: {
-			type: 'OBJECT',
+			type: Type.OBJECT,
 			properties: {
 				timerRowId: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'The session timer row id.',
 				},
 			},
@@ -156,18 +162,18 @@ const functionDeclarations = [
 		name: 'report_delay',
 		description: 'Record that cooking is delayed.',
 		parameters: {
-			type: 'OBJECT',
+			type: Type.OBJECT,
 			properties: {
 				delayMinutes: {
-					type: 'NUMBER',
+					type: Type.NUMBER,
 					description: 'The delay in minutes.',
 				},
 				stepId: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'Optional current step id.',
 				},
 				message: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'Optional short summary in Japanese.',
 				},
 			},
@@ -178,14 +184,14 @@ const functionDeclarations = [
 		name: 'report_mistake',
 		description: 'Record a cooking mistake or unexpected problem.',
 		parameters: {
-			type: 'OBJECT',
+			type: Type.OBJECT,
 			properties: {
 				stepId: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'Optional current step id.',
 				},
 				message: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'Short summary of the mistake in Japanese.',
 				},
 			},
@@ -196,24 +202,24 @@ const functionDeclarations = [
 		name: 'report_ingredient_shortage',
 		description: 'Record that an ingredient is missing or short during cooking.',
 		parameters: {
-			type: 'OBJECT',
+			type: Type.OBJECT,
 			properties: {
 				ingredientName: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'The missing ingredient name.',
 				},
 				stepId: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'Optional current step id.',
 				},
 				message: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'Optional short Japanese summary.',
 				},
 				replacementOptions: {
-					type: 'ARRAY',
+					type: Type.ARRAY,
 					items: {
-						type: 'STRING',
+						type: Type.STRING,
 					},
 					description: 'Optional candidate substitutes.',
 				},
@@ -225,14 +231,14 @@ const functionDeclarations = [
 		name: 'request_replan',
 		description: 'Request a runtime replan when the current plan no longer fits.',
 		parameters: {
-			type: 'OBJECT',
+			type: Type.OBJECT,
 			properties: {
 				stepId: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'Optional current step id.',
 				},
 				message: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'What changed and why the plan should be revised.',
 				},
 			},
@@ -243,25 +249,25 @@ const functionDeclarations = [
 		name: 'web_search',
 		description: 'Search the web with Tavily when runtime and recipe data are insufficient.',
 		parameters: {
-			type: 'OBJECT',
+			type: Type.OBJECT,
 			properties: {
 				query: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'The search query.',
 				},
 				reason: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'Short reason for the search.',
 				},
 				includeDomains: {
-					type: 'ARRAY',
+					type: Type.ARRAY,
 					items: {
-						type: 'STRING',
+						type: Type.STRING,
 					},
 					description: 'Optional domains to prioritize.',
 				},
 				maxResults: {
-					type: 'NUMBER',
+					type: Type.NUMBER,
 					description: 'Optional max result count.',
 				},
 			},
@@ -272,18 +278,18 @@ const functionDeclarations = [
 		name: 'fetch_url',
 		description: 'Fetch a specific URL with Tavily after identifying a useful source.',
 		parameters: {
-			type: 'OBJECT',
+			type: Type.OBJECT,
 			properties: {
 				url: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'The URL to inspect.',
 				},
 				reason: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'Short reason for opening the URL.',
 				},
 				query: {
-					type: 'STRING',
+					type: Type.STRING,
 					description: 'Optional extraction focus.',
 				},
 			},
@@ -291,6 +297,10 @@ const functionDeclarations = [
 		},
 	},
 ] as const;
+
+const allowedFunctionNames = functionDeclarations
+	.map((declaration) => declaration.name)
+	.filter((name): name is string => typeof name === 'string' && name.length > 0);
 
 const moveToStepSchema = z.object({
 	stepId: z.string().trim().min(1).max(120),
@@ -412,41 +422,41 @@ export const buildCookRuntimeLiveSessionPayload = async ({
 		console.error('Failed to load cook runtime snapshot for live payload.', error);
 	}
 
+	const systemInstructionText = snapshot
+		? buildSystemInstruction(snapshot)
+		: buildFallbackSystemInstruction(planId);
+	const liveConfig = {
+		contextWindowCompression: { slidingWindow: {} },
+		inputAudioTranscription: {},
+		outputAudioTranscription: {},
+		responseModalities: [Modality.AUDIO],
+		sessionResumption: {},
+		systemInstruction: {
+			parts: [{ text: systemInstructionText }],
+		},
+		temperature: 0.6,
+		toolConfig: {
+			functionCallingConfig: {
+				allowedFunctionNames,
+				mode: FunctionCallingConfigMode.ANY,
+			},
+		},
+		tools: [{ functionDeclarations: [...functionDeclarations] }],
+	};
 	const token = await getGeminiClient().authTokens.create({
 		config: {
 			expireTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
 			uses: 1,
 			liveConnectConstraints: {
 				model: geminiLiveModel,
-				config: {
-					responseModalities: [Modality.AUDIO],
-				},
+				config: liveConfig,
 			},
-			httpOptions: {
-				apiVersion: 'v1alpha',
-			},
+			lockAdditionalFields: [],
 		},
 	});
 
 	return {
-		config: {
-			contextWindowCompression: { slidingWindow: {} },
-			inputAudioTranscription: {},
-			outputAudioTranscription: {},
-			responseModalities: [Modality.AUDIO],
-			sessionResumption: {},
-			systemInstruction: {
-				parts: [
-					{
-						text: snapshot
-							? buildSystemInstruction(snapshot)
-							: buildFallbackSystemInstruction(planId),
-					},
-				],
-			},
-			temperature: 0.6,
-			tools: [{ functionDeclarations: [...functionDeclarations] }],
-		},
+		config: liveConfig,
 		model: geminiLiveModel,
 		snapshot: snapshot ? summarizeSnapshotForModel(snapshot) : null,
 		token: token.name,

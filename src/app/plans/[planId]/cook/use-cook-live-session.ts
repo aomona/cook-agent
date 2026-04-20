@@ -259,7 +259,7 @@ export const useCookLiveSession = ({
 
 			const ai = new GoogleGenAI({
 				apiKey: payload.token,
-				apiVersion: 'v1alpha',
+				httpOptions: { apiVersion: 'v1alpha' },
 			});
 			const config = {
 				...payload.config,
