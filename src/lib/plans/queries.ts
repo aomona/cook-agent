@@ -398,12 +398,14 @@ export const buildPlanGenerationInput = async ({
 };
 
 export const saveGeneratedPlanVersion = async ({
+	changeReason,
 	changeSummary,
 	planDocument,
 	planId,
 	requestedServings,
 	userId,
 }: {
+	changeReason?: 'initial' | 'runtime_replan' | 'user_edit';
 	changeSummary?: string;
 	planDocument: PlanDocument;
 	planId: string;
@@ -441,7 +443,7 @@ export const saveGeneratedPlanVersion = async ({
 			planId: validPlanId,
 			versionNumber: Number(nextVersionNumber?.value ?? 1),
 			parentVersionId: plan.activeVersionId,
-			changeReason: plan.activeVersionId ? 'user_edit' : 'initial',
+			changeReason: changeReason ?? (plan.activeVersionId ? 'user_edit' : 'initial'),
 			changeSummary:
 				changeSummary ??
 				(plan.activeVersionId ? 'AI が工程を再生成しました。' : 'AI が工程を生成しました。'),

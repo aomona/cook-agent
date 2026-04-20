@@ -54,6 +54,13 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 						</NextLink>
 						<Flex gap="sm" w="full" justify="end" wrap="wrap">
 							<DeletePlanButton planId={plan.id} />
+							{plan.activeVersion ? (
+								<NextLink href={`/plans/${plan.id}/cook`}>
+									<Button as="span" variant="outline">
+										調理画面へ
+									</Button>
+								</NextLink>
+							) : null}
 							{plan.status === 'draft' ? (
 								<NextLink href={`/create/open/${plan.id}`}>
 									<Button as="span" variant="solid">
