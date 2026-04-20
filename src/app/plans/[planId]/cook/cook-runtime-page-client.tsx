@@ -12,9 +12,10 @@ import {
 	VStack,
 } from '@workspaces/ui';
 import { useRouter } from 'next/navigation';
-import { startTransition, useState } from 'react';
+import { startTransition, useEffect, useState } from 'react';
 import type { CookSessionSnapshot } from '@/lib/cook-runtime/types';
 import { formatStructuredAmount } from '@/lib/plans/presentation';
+import { useCookLiveSession } from './use-cook-live-session';
 
 const getSessionStatusLabel = (
 	status: NonNullable<CookSessionSnapshot['session']>['status'],
@@ -59,9 +60,45 @@ export const CookRuntimePageClient = ({
 	const notice = useNotice();
 	const [snapshot, setSnapshot] = useState(initialSnapshot);
 	const [isPending, setIsPending] = useState(false);
+	const [isTranscriptExpanded, setIsTranscriptExpanded] = useState(false);
 	const currentMaterials = getStepMaterialLabels(snapshot);
 	const primaryTimer = snapshot.timers[0] ?? null;
 	const secondaryTimers = snapshot.timers.slice(1, 4);
+	const {
+		connect,
+		connectionState,
+		disconnect,
+		latestError,
+		microphoneState,
+		refreshSnapshot,
+		toggleMicrophone,
+		transcriptEntries,
+	} = useCookLiveSession({
+		planId: snapshot.plan.id,
+		onSnapshot: setSnapshot,
+	});
+
+	useEffect(() => {
+		const interval = window.setInterval(() => {
+			setSnapshot((currentSnapshot) => ({ ...currentSnapshot }));
+		}, 1000);
+
+		return () => {
+			window.clearInterval(interval);
+		};
+	}, []);
+
+	const getTimerDisplaySeconds = (timer: CookSessionSnapshot['timers'][number]): number => {
+		if (timer.status === 'paused') {
+			return timer.pausedRemainingSeconds ?? timer.durationSeconds;
+		}
+
+		if (timer.status === 'running' && timer.endsAt) {
+			return Math.max(0, Math.ceil((new Date(timer.endsAt).getTime() - Date.now()) / 1000));
+		}
+
+		return timer.remainingSeconds ?? timer.durationSeconds;
+	};
 
 	const applyAction = async (body: Record<string, unknown>) => {
 		if (!snapshot.session) {
@@ -88,6 +125,7 @@ export const CookRuntimePageClient = ({
 			}
 
 			setSnapshot(payload.snapshot);
+			void refreshSnapshot();
 			startTransition(() => {
 				router.refresh();
 			});
@@ -120,6 +158,7 @@ export const CookRuntimePageClient = ({
 			}
 
 			setSnapshot(payload.snapshot);
+			void refreshSnapshot();
 			startTransition(() => {
 				router.refresh();
 			});
@@ -135,19 +174,58 @@ export const CookRuntimePageClient = ({
 		}
 	};
 
+	const transcriptPreview = transcriptEntries.length
+		? isTranscriptExpanded
+			? transcriptEntries
+			: transcriptEntries.slice(-6)
+		: snapshot.recentEvents.slice(0, 6).map((event) => ({
+				createdAt: new Date(event.occurredAt).getTime(),
+				id: event.id,
+				role: 'status' as const,
+				text: event.message,
+			}));
+
 	return (
 		<VStack align="stretch" gap="lg">
 			<Flex align="center" justify="space-between" gap="md" wrap="wrap">
 				<VStack align="stretch" gap="xs">
 					<Heading size="lg">Realtime Cook Runtime</Heading>
 					<Text color="fg.subtle">
-						音声 runtime
-						を載せる前のセッション基盤です。現在ステップ、次ステップ、タイマー、直近イベントを確認できます。
+						音声主導の Gemini Live runtime
+						です。現在ステップ、次ステップ、タイマー、会話ログを見ながら調理を進められます。
 					</Text>
+					{latestError ? <Text color="danger">{latestError}</Text> : null}
 				</VStack>
 				<Flex gap="sm" wrap="wrap">
 					<Badge colorScheme="blue" variant="subtle">
 						v{snapshot.plan.versionNumber}
+					</Badge>
+					<Badge
+						colorScheme={
+							connectionState === 'connected'
+								? 'green'
+								: connectionState === 'connecting'
+									? 'amber'
+									: connectionState === 'error'
+										? 'red'
+										: 'gray'
+						}
+						variant="subtle"
+					>
+						{connectionState === 'connected'
+							? '音声接続中'
+							: connectionState === 'connecting'
+								? '接続中'
+								: connectionState === 'error'
+									? '接続エラー'
+									: '未接続'}
+					</Badge>
+					<Badge colorScheme={microphoneState === 'on' ? 'red' : 'gray'} variant="subtle">
+						{microphoneState === 'on'
+							? 'Mic ON'
+							: microphoneState === 'requesting'
+								? 'Mic 要求中'
+								: 'Mic OFF'}
 					</Badge>
 					<Badge colorScheme={snapshot.session ? 'green' : 'gray'} variant="subtle">
 						{snapshot.session ? getSessionStatusLabel(snapshot.session.status) : '未開始'}
@@ -224,6 +302,22 @@ export const CookRuntimePageClient = ({
 											次へ
 										</Button>
 										<Button
+											disabled={connectionState === 'connecting'}
+											onClick={() =>
+												void (connectionState === 'connected' ? disconnect() : connect())
+											}
+											variant="outline"
+										>
+											{connectionState === 'connected' ? '接続終了' : '音声接続'}
+										</Button>
+										<Button
+											disabled={connectionState !== 'connected'}
+											onClick={() => void toggleMicrophone()}
+											variant="outline"
+										>
+											{microphoneState === 'on' ? 'Mic停止' : 'Mic開始'}
+										</Button>
+										<Button
 											disabled={isPending}
 											onClick={() =>
 												void applyAction({
@@ -284,7 +378,9 @@ export const CookRuntimePageClient = ({
 							{snapshot.nextStep ? (
 								<>
 									<Text fontWeight="medium">{snapshot.nextStep.label}</Text>
-									<Text color="fg.subtle">{snapshot.nextStep.instructions}</Text>
+									<Text color="fg.subtle" lineClamp={4}>
+										{snapshot.nextStep.instructions}
+									</Text>
 								</>
 							) : (
 								<Text color="fg.subtle">次の手順はまだありません。</Text>
@@ -298,7 +394,7 @@ export const CookRuntimePageClient = ({
 							{primaryTimer ? (
 								<>
 									<Text fontSize="2xl" fontWeight="black">
-										{primaryTimer.remainingSeconds ?? primaryTimer.durationSeconds}秒
+										{getTimerDisplaySeconds(primaryTimer)}秒
 									</Text>
 									<Text>{primaryTimer.label}</Text>
 									<Flex gap="sm" wrap="wrap">
@@ -362,7 +458,7 @@ export const CookRuntimePageClient = ({
 									<Text fontWeight="semibold">他のタイマー</Text>
 									{secondaryTimers.map((timer) => (
 										<Text key={timer.id} color="fg.subtle" fontSize="sm">
-											{timer.label}: {timer.remainingSeconds ?? timer.durationSeconds}秒
+											{timer.label}: {getTimerDisplaySeconds(timer)}秒
 										</Text>
 									))}
 								</VStack>
@@ -373,15 +469,25 @@ export const CookRuntimePageClient = ({
 					<Card.Root variant="outline">
 						<Card.Body gap="sm">
 							<Heading size="sm">Transcript / Recent Events</Heading>
-							{snapshot.recentEvents.length > 0 ? (
-								snapshot.recentEvents.slice(0, 6).map((event) => (
-									<VStack key={event.id} align="stretch" gap="xs">
-										<Text fontSize="sm">{event.message}</Text>
-										<Text color="fg.subtle" fontSize="xs">
-											{new Date(event.occurredAt).toLocaleTimeString('ja-JP')}
-										</Text>
-									</VStack>
-								))
+							{transcriptPreview.length > 0 ? (
+								<>
+									{transcriptPreview.map((entry) => (
+										<VStack key={entry.id} align="stretch" gap="xs">
+											<Text fontSize="sm">{entry.text}</Text>
+											<Text color="fg.subtle" fontSize="xs">
+												{new Date(entry.createdAt).toLocaleTimeString('ja-JP')}
+											</Text>
+										</VStack>
+									))}
+									{transcriptEntries.length > 6 ? (
+										<Button
+											onClick={() => setIsTranscriptExpanded((currentState) => !currentState)}
+											variant="ghost"
+										>
+											{isTranscriptExpanded ? '閉じる' : 'もっと見る'}
+										</Button>
+									) : null}
+								</>
 							) : (
 								<Text color="fg.subtle">まだイベントはありません。</Text>
 							)}

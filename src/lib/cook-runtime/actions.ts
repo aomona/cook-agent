@@ -3,6 +3,8 @@ import 'server-only';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { cookingSessions, plans, planVersions, sessionEvents, sessionTimers } from '@/db/schema';
+import { improveCookingPlan } from '@/lib/ai/planner';
+import { buildPlanGenerationInput, saveGeneratedPlanVersion } from '@/lib/plans/queries';
 import { planDocumentSchema } from '@/lib/plans/schema';
 import type {
 	PlanDocument,
@@ -671,17 +673,65 @@ export const requestRuntimeReplan = async ({
 		throw new Error('Cooking session not found.');
 	}
 
+	const snapshot = await getOwnedCookSessionSnapshotBySessionId(session.id, userId);
+
+	if (!snapshot) {
+		throw new Error('Cooking session not found.');
+	}
+
+	const plannerInput = await buildPlanGenerationInput({
+		options: {
+			requestedServings: snapshot.plan.requestedServings ?? snapshot.plan.document.servings,
+			availableEquipment: snapshot.plan.document.metadata?.availableEquipment ?? [],
+			constraints: snapshot.plan.document.metadata?.constraints ?? [],
+		},
+		planId: session.planId,
+		userId,
+	});
+	const nextPlanDocument = await improveCookingPlan({
+		currentPlan: snapshot.plan.document,
+		improvementRequest: message,
+		plannerInput: {
+			...plannerInput,
+			availableEquipment:
+				snapshot.plan.document.metadata?.availableEquipment ?? plannerInput.availableEquipment,
+			constraints: snapshot.plan.document.metadata?.constraints ?? plannerInput.constraints,
+			planningSettings:
+				snapshot.plan.document.metadata?.planningSettings ?? plannerInput.planningSettings,
+		},
+	});
+	const activeVersion = await saveGeneratedPlanVersion({
+		changeReason: 'runtime_replan',
+		changeSummary: `Runtime replan: ${message.slice(0, 120)}`,
+		planDocument: nextPlanDocument,
+		planId: session.planId,
+		requestedServings: snapshot.plan.requestedServings ?? nextPlanDocument.servings,
+		userId,
+	});
+	const nextCurrentStepId = nextPlanDocument.steps.some(
+		(planStep) => planStep.id === session.currentStepId,
+	)
+		? session.currentStepId
+		: (nextPlanDocument.steps[0]?.id ?? null);
 	const patch: PlanPatch = {
-		baseVersionNumber: 0,
+		baseVersionNumber: snapshot.plan.versionNumber,
 		operations: [],
 		summary: message,
 	};
+
+	await db
+		.update(cookingSessions)
+		.set({
+			currentStepId: nextCurrentStepId,
+			planVersionId: activeVersion.id,
+		})
+		.where(eq(cookingSessions.id, session.id));
 
 	await createSessionEvent({
 		eventType: 'replan_applied',
 		payload: {
 			appliedPatch: patch,
-			message: 'runtime replan は次の実装で planner に接続します。',
+			message: `runtime replan を適用しました: ${message}`,
 			stepId,
 		},
 		sessionId: session.id,

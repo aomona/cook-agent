@@ -32,9 +32,10 @@ import { getRequiredEnv } from '@/lib/env';
 
 const geminiLiveModel = 'gemini-3.1-flash-live-preview';
 
-const ai = new GoogleGenAI({
-	apiKey: getRequiredEnv('GEMINI_API_KEY'),
-});
+const getGeminiClient = () =>
+	new GoogleGenAI({
+		apiKey: getRequiredEnv('GEMINI_API_KEY'),
+	});
 
 const functionDeclarations = [
 	{
@@ -398,7 +399,7 @@ export const buildCookRuntimeLiveSessionPayload = async ({
 		throw new Error('Cook session context not found.');
 	}
 
-	const token = await ai.authTokens.create({
+	const token = await getGeminiClient().authTokens.create({
 		config: {
 			expireTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
 			uses: 1,
