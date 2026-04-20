@@ -3,13 +3,13 @@ import { z } from 'zod';
 import { buildCookRuntimeLiveSessionPayload } from '@/lib/cook-runtime/live';
 import { getRequestActor } from '@/lib/create-session';
 
-const requestSchema = z.object({
+const routeParamsSchema = z.object({
 	planId: z.uuid(),
 });
 
 export const runtime = 'nodejs';
 
-export async function POST(request: Request) {
+export async function POST(_: Request, context: { params: Promise<{ planId: string }> }) {
 	const actor = await getRequestActor(await cookies());
 
 	if (!actor) {
@@ -17,13 +17,13 @@ export async function POST(request: Request) {
 	}
 
 	try {
-		const payload = requestSchema.parse(await request.json());
-		const livePayload = await buildCookRuntimeLiveSessionPayload({
-			planId: payload.planId,
+		const params = routeParamsSchema.parse(await context.params);
+		const payload = await buildCookRuntimeLiveSessionPayload({
+			planId: params.planId,
 			userId: actor.userId,
 		});
 
-		return Response.json(livePayload);
+		return Response.json(payload);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Failed to build live session.';
 
