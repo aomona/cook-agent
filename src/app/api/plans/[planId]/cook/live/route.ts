@@ -25,6 +25,7 @@ export async function POST(_: Request, context: { params: Promise<{ planId: stri
 
 		return Response.json(payload);
 	} catch (error) {
+		console.error('Failed to build cook live payload.', error);
 		const message = error instanceof Error ? error.message : 'Failed to build live session.';
 
 		return Response.json({ message }, { status: 400 });

@@ -386,6 +386,17 @@ const buildSystemInstruction = (snapshot: CookSessionSnapshot): string =>
 		JSON.stringify(summarizeSnapshotForModel(snapshot), null, 2),
 	].join('\n');
 
+const buildFallbackSystemInstruction = (planId: string): string =>
+	[
+		'You are a realtime cooking runtime for a voice-first prototype.',
+		'Speak natural Japanese only.',
+		'Keep responses short and practical for someone actively cooking.',
+		'Always call get_runtime_snapshot before making concrete decisions when current state is unclear.',
+		'Never claim timers, steps, or session state changed until the matching tool call succeeds.',
+		'Use web_search and fetch_url only when runtime state and the current plan are insufficient.',
+		`Current planId: ${planId}`,
+	].join('\n');
+
 export const buildCookRuntimeLiveSessionPayload = async ({
 	planId,
 	userId,
@@ -393,10 +404,12 @@ export const buildCookRuntimeLiveSessionPayload = async ({
 	planId: string;
 	userId: string;
 }) => {
-	const snapshot = await getOwnedCookSessionSnapshotByPlanId(planId, userId);
+	let snapshot: CookSessionSnapshot | null = null;
 
-	if (!snapshot) {
-		throw new Error('Cook session context not found.');
+	try {
+		snapshot = await getOwnedCookSessionSnapshotByPlanId(planId, userId);
+	} catch (error) {
+		console.error('Failed to load cook runtime snapshot for live payload.', error);
 	}
 
 	const token = await getGeminiClient().authTokens.create({
@@ -423,13 +436,19 @@ export const buildCookRuntimeLiveSessionPayload = async ({
 			responseModalities: [Modality.AUDIO],
 			sessionResumption: {},
 			systemInstruction: {
-				parts: [{ text: buildSystemInstruction(snapshot) }],
+				parts: [
+					{
+						text: snapshot
+							? buildSystemInstruction(snapshot)
+							: buildFallbackSystemInstruction(planId),
+					},
+				],
 			},
 			temperature: 0.6,
 			tools: [{ functionDeclarations: [...functionDeclarations] }],
 		},
 		model: geminiLiveModel,
-		snapshot: summarizeSnapshotForModel(snapshot),
+		snapshot: snapshot ? summarizeSnapshotForModel(snapshot) : null,
 		token: token.name,
 	};
 };
