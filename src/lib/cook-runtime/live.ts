@@ -41,6 +41,7 @@ const geminiLiveModel = 'gemini-3.1-flash-live-preview';
 const getGeminiClient = () =>
 	new GoogleGenAI({
 		apiKey: getRequiredEnv('GEMINI_API_KEY'),
+		httpOptions: { apiVersion: 'v1alpha' },
 	});
 
 const functionDeclarations: FunctionDeclaration[] = [
