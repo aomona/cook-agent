@@ -7,6 +7,16 @@ const routeParamsSchema = z.object({
 	sessionId: z.uuid(),
 });
 
+const getSessionRouteErrorResponse = (
+	error: unknown,
+): { message: string; shouldLog?: boolean; status: number } => {
+	if (error instanceof z.ZodError) {
+		return { message: 'Invalid cooking session identifier.', status: 400 };
+	}
+
+	return { message: 'Failed to load cooking session.', shouldLog: true, status: 500 };
+};
+
 export const runtime = 'nodejs';
 
 export async function GET(_: Request, context: { params: Promise<{ sessionId: string }> }) {
@@ -16,12 +26,22 @@ export async function GET(_: Request, context: { params: Promise<{ sessionId: st
 		return Response.json({ message: 'Unauthorized.' }, { status: 401 });
 	}
 
-	const params = routeParamsSchema.parse(await context.params);
-	const snapshot = await getOwnedCookSessionSnapshotBySessionId(params.sessionId, actor.userId);
+	try {
+		const params = routeParamsSchema.parse(await context.params);
+		const snapshot = await getOwnedCookSessionSnapshotBySessionId(params.sessionId, actor.userId);
 
-	if (!snapshot) {
-		return Response.json({ message: 'Cooking session not found.' }, { status: 404 });
+		if (!snapshot) {
+			return Response.json({ message: 'Cooking session not found.' }, { status: 404 });
+		}
+
+		return Response.json({ snapshot });
+	} catch (error) {
+		const { message, shouldLog, status } = getSessionRouteErrorResponse(error);
+
+		if (shouldLog) {
+			console.error(error);
+		}
+
+		return Response.json({ message }, { status });
 	}
-
-	return Response.json({ snapshot });
 }

@@ -13,6 +13,25 @@ const uiConfig = defineConfig({
 	defaultColorMode: 'system',
 });
 
+const uiStorageCookieKeys = [
+	'color-mode',
+	'default-color-mode',
+	'theme-scheme',
+	'default-theme-scheme',
+] as const;
+
+const getUiStorageCookieHeader = (
+	cookieStore: Awaited<ReturnType<typeof cookies>>,
+): string | undefined => {
+	const uiCookies = uiStorageCookieKeys.flatMap((key) => {
+		const value = cookieStore.get(key)?.value;
+
+		return value ? [`${key}=${value}`] : [];
+	});
+
+	return uiCookies.length > 0 ? uiCookies.join('; ') : undefined;
+};
+
 const geistSans = Geist({
 	variable: '--font-geist-sans',
 	subsets: ['latin'],
@@ -34,6 +53,7 @@ export default async function RootLayout({
 	children: React.ReactNode;
 }>) {
 	const cookieStore = await cookies();
+	const uiCookie = getUiStorageCookieHeader(cookieStore);
 	const session = await auth.api.getSession({ headers: await headers() });
 	const initialPlanningSettingsState = session
 		? await getUserPlanningSettingsState(session.user.id)
@@ -46,7 +66,7 @@ export default async function RootLayout({
 		<html lang="ja" suppressHydrationWarning>
 			<body suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable}`}>
 				<ColorModeScript defaultValue={uiConfig.defaultColorMode} type="cookie" />
-				<UIProvider config={uiConfig} cookie={cookieStore.toString()} storage="cookie">
+				<UIProvider config={uiConfig} cookie={uiCookie} storage="cookie">
 					<PlanningSettingsProvider initialState={initialPlanningSettingsState}>
 						{session && <AppHeader />}
 						<Box as="main" h="full">

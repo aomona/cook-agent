@@ -21,6 +21,8 @@ const getSessionStatusLabel = (
 	status: NonNullable<CookSessionSnapshot['session']>['status'],
 ): string => {
 	switch (status) {
+		case 'not_started':
+			return '未開始';
 		case 'active':
 			return '進行中';
 		case 'paused':
@@ -29,8 +31,6 @@ const getSessionStatusLabel = (
 			return '完了';
 		case 'abandoned':
 			return '中断';
-		default:
-			return '未開始';
 	}
 };
 

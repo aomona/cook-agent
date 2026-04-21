@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 		});
 
 		if (!livePayload.snapshot) {
-			return Response.json({ message: 'Not found' }, { status: 403 });
+			return Response.json({ message: 'Plan not found.' }, { status: 404 });
 		}
 
 		return Response.json(livePayload);

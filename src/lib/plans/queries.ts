@@ -430,50 +430,97 @@ export const saveGeneratedPlanVersion = async ({
 		throw new Error('Plan not found.');
 	}
 
-	const [nextVersionNumber] = await db
-		.select({
-			value: sql<number>`coalesce(max(${planVersions.versionNumber}), 0) + 1`,
-		})
-		.from(planVersions)
-		.where(eq(planVersions.planId, validPlanId));
+	const requestedChangeReason = changeReason ?? null;
+	const requestedChangeSummary = changeSummary ?? null;
 
-	const [insertedVersion] = await db
-		.insert(planVersions)
-		.values({
-			planId: validPlanId,
-			versionNumber: Number(nextVersionNumber?.value ?? 1),
-			parentVersionId: plan.activeVersionId,
-			changeReason: changeReason ?? (plan.activeVersionId ? 'user_edit' : 'initial'),
-			changeSummary:
-				changeSummary ??
-				(plan.activeVersionId ? 'AI が工程を再生成しました。' : 'AI が工程を生成しました。'),
-			planJson: planDocument,
-			createdByUserId: userId,
-		})
-		.returning({
-			id: planVersions.id,
-			versionNumber: planVersions.versionNumber,
-			changeSummary: planVersions.changeSummary,
-			createdAt: planVersions.createdAt,
-			planJson: planVersions.planJson,
-		});
+	const insertedVersionResult = await db.execute<{
+		changeSummary: string | null;
+		createdAt: Date | string;
+		id: string;
+		planJson: PlanDocument | string;
+		versionNumber: number;
+	}>(sql`
+		WITH plan_lock AS (
+			SELECT pg_advisory_xact_lock(hashtext(${validPlanId})) AS locked
+		),
+		plan_row AS (
+			SELECT ${plans.id} AS id, ${plans.activeVersionId} AS active_version_id
+			FROM ${plans}, plan_lock
+			WHERE ${plans.id} = ${validPlanId}
+				AND ${plans.userId} = ${userId}
+		),
+		inserted_version AS (
+			INSERT INTO ${planVersions} (
+				${planVersions.planId},
+				${planVersions.versionNumber},
+				${planVersions.parentVersionId},
+				${planVersions.changeReason},
+				${planVersions.changeSummary},
+				${planVersions.planJson},
+				${planVersions.createdByUserId}
+			)
+			SELECT
+				${validPlanId},
+				coalesce(max(${planVersions.versionNumber}), 0) + 1,
+				plan_row.active_version_id,
+				coalesce(
+					${requestedChangeReason}::plan_change_reason,
+					CASE
+						WHEN plan_row.active_version_id IS NULL THEN 'initial'::plan_change_reason
+						ELSE 'user_edit'::plan_change_reason
+					END
+				),
+				coalesce(
+					${requestedChangeSummary},
+					CASE
+						WHEN plan_row.active_version_id IS NULL THEN 'AI が工程を生成しました。'
+						ELSE 'AI が工程を再生成しました。'
+					END
+				),
+				${JSON.stringify(planDocument)}::jsonb,
+				${userId}
+			FROM plan_row
+			LEFT JOIN ${planVersions} ON ${planVersions.planId} = plan_row.id
+			GROUP BY plan_row.id, plan_row.active_version_id
+			RETURNING
+				${planVersions.id} AS id,
+				${planVersions.versionNumber} AS "versionNumber",
+				${planVersions.changeSummary} AS "changeSummary",
+				${planVersions.createdAt} AS "createdAt",
+				${planVersions.planJson} AS "planJson"
+		),
+		updated_plan AS (
+			UPDATE ${plans}
+			SET
+				${plans.activeVersionId} = inserted_version.id,
+				${plans.requestedServings} = ${requestedServings},
+				${plans.status} = 'ready'
+			FROM inserted_version
+			WHERE ${plans.id} = ${validPlanId}
+				AND ${plans.userId} = ${userId}
+			RETURNING inserted_version.id
+		)
+		SELECT *
+		FROM inserted_version
+	`);
 
-	await db
-		.update(plans)
-		.set({
-			activeVersionId: insertedVersion.id,
-			requestedServings,
-			status: 'ready',
-		})
-		.where(and(eq(plans.id, validPlanId), eq(plans.userId, userId)));
+	const insertedVersion = insertedVersionResult.rows[0];
 
-	const parsedPlan = planDocumentSchema.parse(insertedVersion.planJson);
+	if (!insertedVersion) {
+		throw new Error('Plan not found.');
+	}
+
+	const parsedPlan = planDocumentSchema.parse(
+		typeof insertedVersion.planJson === 'string'
+			? JSON.parse(insertedVersion.planJson)
+			: insertedVersion.planJson,
+	);
 
 	return {
 		id: insertedVersion.id,
 		versionNumber: insertedVersion.versionNumber,
 		changeSummary: insertedVersion.changeSummary,
-		createdAt: insertedVersion.createdAt.toISOString(),
+		createdAt: new Date(insertedVersion.createdAt).toISOString(),
 		plan: parsedPlan,
 	};
 };

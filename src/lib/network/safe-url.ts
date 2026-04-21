@@ -8,29 +8,58 @@ type SafeUrlMessages = {
 	invalidProtocolMessage?: string;
 };
 
-const isPrivateIpv4 = (address: string): boolean => {
+const isBlockedIpv4 = (address: string): boolean => {
 	const octets = address.split('.').map((segment) => Number.parseInt(segment, 10));
 
-	if (octets.length !== 4 || octets.some((octet) => Number.isNaN(octet))) {
+	if (
+		octets.length !== 4 ||
+		octets.some((octet) => Number.isNaN(octet) || octet < 0 || octet > 255)
+	) {
 		return true;
 	}
 
-	if (octets[0] === 10 || octets[0] === 127) {
+	const [first, second, third] = octets;
+
+	if (first === 0 || first === 10 || first === 127) {
 		return true;
 	}
 
-	if (octets[0] === 169 && octets[1] === 254) {
+	if (first === 100 && second >= 64 && second <= 127) {
 		return true;
 	}
 
-	if (octets[0] === 192 && octets[1] === 168) {
+	if (first === 169 && second === 254) {
 		return true;
 	}
 
-	return octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31;
+	if (first === 172 && second >= 16 && second <= 31) {
+		return true;
+	}
+
+	if (first === 192 && second === 168) {
+		return true;
+	}
+
+	if (first === 192 && second === 0 && (third === 0 || third === 2)) {
+		return true;
+	}
+
+	if (first === 198 && (second === 18 || second === 19)) {
+		return true;
+	}
+
+	if (first === 198 && second === 51 && third === 100) {
+		return true;
+	}
+
+	if (first === 203 && second === 0 && third === 113) {
+		return true;
+	}
+
+	return first >= 224;
 };
 
-const isPrivateIpv6 = (address: string): boolean => {
+const isBlockedIpv6 = (address: string): boolean => {
 	const normalizedAddress = address.toLowerCase();
 
 	if (normalizedAddress === '::1') {
@@ -38,7 +67,7 @@ const isPrivateIpv6 = (address: string): boolean => {
 	}
 
 	if (normalizedAddress.startsWith('::ffff:')) {
-		return isPrivateIpAddress(normalizedAddress.slice(7));
+		return isBlockedIpAddress(normalizedAddress.slice(7));
 	}
 
 	if (normalizedAddress.startsWith('fc') || normalizedAddress.startsWith('fd')) {
@@ -53,15 +82,15 @@ const isPrivateIpv6 = (address: string): boolean => {
 	);
 };
 
-const isPrivateIpAddress = (address: string): boolean => {
+const isBlockedIpAddress = (address: string): boolean => {
 	const ipVersion = isIP(address);
 
 	if (ipVersion === 4) {
-		return isPrivateIpv4(address);
+		return isBlockedIpv4(address);
 	}
 
 	if (ipVersion === 6) {
-		return isPrivateIpv6(address);
+		return isBlockedIpv6(address);
 	}
 
 	return true;
@@ -87,7 +116,7 @@ export const assertSafePublicHttpUrl = async (
 	}
 
 	if (isIP(hostname) !== 0) {
-		if (isPrivateIpAddress(hostname)) {
+		if (isBlockedIpAddress(hostname)) {
 			throw new Error(blockedMessage);
 		}
 
@@ -96,7 +125,7 @@ export const assertSafePublicHttpUrl = async (
 
 	const addresses = await lookup(hostname, { all: true, verbatim: true });
 
-	if (addresses.some(({ address }) => isPrivateIpAddress(address))) {
+	if (addresses.some(({ address }) => isBlockedIpAddress(address))) {
 		throw new Error(blockedMessage);
 	}
 

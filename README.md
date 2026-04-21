@@ -22,8 +22,8 @@ AI 支援型の調理システムのプロトタイプです。
 - React 19
 - strict TypeScript
 - pnpm workspace 構成。アプリ本体は `src/`、共通 UI は `workspaces/ui`
-- Tailwind CSS v4
 - Yamada UI
+- カスタム global CSS
 - Drizzle ORM + Neon serverless driver
 - Better Auth
 - AI SDK
@@ -40,7 +40,7 @@ AI 支援型の調理システムのプロトタイプです。
 主なパス:
 
 - `src/app/page.tsx`
-- `src/app/plan/page.tsx`
+- `src/app/plans/[planId]/page.tsx`
 - `src/app/api/auth/[...all]/route.ts`
 - `src/lib/ai/planner.ts`
 - `src/lib/auth.ts`
