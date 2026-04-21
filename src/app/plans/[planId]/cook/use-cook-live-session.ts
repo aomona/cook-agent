@@ -9,7 +9,8 @@ import {
 } from '@google/genai';
 import { startTransition, useEffect, useEffectEvent, useRef, useState } from 'react';
 import type { CookSessionSnapshot } from '@/lib/cook-runtime/types';
-import { decodePcm16Base64ToFloat32, downsampleToPcm16Base64 } from './live-audio';
+import { useAudioPlaybackQueue } from './use-audio-playback-queue';
+import { useLiveMicrophone } from './use-live-microphone';
 
 export type RuntimeTranscriptEntry = {
 	id: string;
@@ -19,7 +20,6 @@ export type RuntimeTranscriptEntry = {
 };
 
 type ConnectionState = 'connected' | 'connecting' | 'disconnected' | 'error' | 'idle';
-type MicrophoneState = 'off' | 'on' | 'requesting';
 
 type LiveSessionPayload = {
 	token: string;
@@ -50,25 +50,30 @@ export const useCookLiveSession = ({
 	onSnapshot: (snapshot: CookSessionSnapshot) => void;
 }) => {
 	const [connectionState, setConnectionState] = useState<ConnectionState>('idle');
-	const [microphoneState, setMicrophoneState] = useState<MicrophoneState>('off');
 	const [latestError, setLatestError] = useState<string | null>(null);
 	const [transcriptEntries, setTranscriptEntries] = useState<RuntimeTranscriptEntry[]>([]);
 	const sessionRef = useRef<Session | null>(null);
 	const sessionIdRef = useRef<string | null>(null);
 	const disconnectRequestedRef = useRef(false);
 	const resumptionHandleRef = useRef<string | null>(null);
-	const microphoneContextRef = useRef<AudioContext | null>(null);
-	const microphoneSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-	const microphoneProcessorRef = useRef<ScriptProcessorNode | null>(null);
-	const microphoneStreamRef = useRef<MediaStream | null>(null);
-	const microphoneEnabledRef = useRef(false);
-	const playbackContextRef = useRef<AudioContext | null>(null);
-	const playbackSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
-	const nextPlaybackTimeRef = useRef(0);
+	const toolCallQueueRef = useRef(Promise.resolve());
 
 	const appendEntry = (entry: Omit<RuntimeTranscriptEntry, 'createdAt' | 'id'>) => {
 		setTranscriptEntries((currentEntries) => appendTranscriptEntry(currentEntries, entry));
 	};
+	const { clearPlaybackQueue, disposePlayback, initializePlayback, queuePlayback } =
+		useAudioPlaybackQueue();
+	const { microphoneState, startMicrophone, stopMicrophone } = useLiveMicrophone({
+		getSession: () => sessionRef.current,
+		onError: (message) => {
+			setLatestError(message);
+			appendEntry({ role: 'status', text: 'マイクを開始できませんでした。' });
+		},
+		onStarted: () => {
+			appendEntry({ role: 'status', text: 'マイクを有効にしました。話しかけてください。' });
+		},
+		onStopped: () => undefined,
+	});
 
 	const refreshSnapshot = async () => {
 		const response = await fetch(`/api/plans/${planId}/cook/session`, {
@@ -89,62 +94,13 @@ export const useCookLiveSession = ({
 		});
 	};
 
-	const clearPlaybackQueue = () => {
-		for (const source of playbackSourcesRef.current) {
-			source.stop();
-		}
-
-		playbackSourcesRef.current.clear();
-		nextPlaybackTimeRef.current = playbackContextRef.current?.currentTime ?? 0;
-	};
-
-	const queuePlayback = (base64Pcm: string) => {
-		const playbackContext = playbackContextRef.current;
-
-		if (!playbackContext) {
-			return;
-		}
-
-		const samples = decodePcm16Base64ToFloat32(base64Pcm);
-		const audioBuffer = playbackContext.createBuffer(1, samples.length, 24000);
-		audioBuffer.copyToChannel(new Float32Array(samples), 0);
-
-		const source = playbackContext.createBufferSource();
-		source.buffer = audioBuffer;
-		source.connect(playbackContext.destination);
-		const startAt = Math.max(nextPlaybackTimeRef.current, playbackContext.currentTime);
-		source.start(startAt);
-		nextPlaybackTimeRef.current = startAt + audioBuffer.duration;
-		playbackSourcesRef.current.add(source);
-		source.onended = () => {
-			playbackSourcesRef.current.delete(source);
-		};
-	};
-
-	const stopMicrophone = () => {
-		microphoneEnabledRef.current = false;
-		sessionRef.current?.sendRealtimeInput({ audioStreamEnd: true });
-		microphoneProcessorRef.current?.disconnect();
-		microphoneSourceRef.current?.disconnect();
-		microphoneStreamRef.current?.getTracks().forEach((track) => {
-			track.stop();
-		});
-		void microphoneContextRef.current?.close();
-		microphoneProcessorRef.current = null;
-		microphoneSourceRef.current = null;
-		microphoneStreamRef.current = null;
-		microphoneContextRef.current = null;
-		setMicrophoneState('off');
-	};
-
 	const disconnect = async () => {
 		disconnectRequestedRef.current = true;
-		stopMicrophone();
+		await stopMicrophone();
 		clearPlaybackQueue();
 		sessionRef.current?.close();
 		sessionRef.current = null;
-		void playbackContextRef.current?.close();
-		playbackContextRef.current = null;
+		await disposePlayback();
 		setConnectionState('disconnected');
 		appendEntry({ role: 'status', text: '音声接続を終了しました。' });
 	};
@@ -222,13 +178,26 @@ export const useCookLiveSession = ({
 		}
 	};
 
+	const enqueueToolCalls = (functionCalls: FunctionCall[]) => {
+		toolCallQueueRef.current = toolCallQueueRef.current
+			.catch(() => undefined)
+			.then(async () => {
+				await handleToolCalls(functionCalls);
+			})
+			.catch((error) => {
+				const message = error instanceof Error ? error.message : 'Tool failed.';
+				setLatestError(message);
+				appendEntry({ role: 'status', text: `補助ツール実行エラー: ${message}` });
+			});
+	};
+
 	const handleMessage = (message: LiveServerMessage) => {
 		if (message.sessionResumptionUpdate?.resumable && message.sessionResumptionUpdate.newHandle) {
 			resumptionHandleRef.current = message.sessionResumptionUpdate.newHandle;
 		}
 
 		if (message.toolCall?.functionCalls?.length) {
-			void handleToolCalls(message.toolCall.functionCalls);
+			enqueueToolCalls(message.toolCall.functionCalls);
 		}
 
 		if (message.serverContent?.interrupted) {
@@ -276,10 +245,7 @@ export const useCookLiveSession = ({
 
 			await refreshSnapshot();
 
-			const playbackContext = new AudioContext();
-			await playbackContext.resume();
-			playbackContextRef.current = playbackContext;
-			nextPlaybackTimeRef.current = playbackContext.currentTime;
+			await initializePlayback();
 
 			const ai = new GoogleGenAI({
 				apiKey: payload.token,
@@ -308,7 +274,7 @@ export const useCookLiveSession = ({
 					},
 					onclose: () => {
 						sessionRef.current = null;
-						stopMicrophone();
+						void stopMicrophone();
 						clearPlaybackQueue();
 						setConnectionState(disconnectRequestedRef.current ? 'disconnected' : 'idle');
 						appendEntry({ role: 'status', text: 'Gemini Live との接続が閉じられました。' });
@@ -326,8 +292,10 @@ export const useCookLiveSession = ({
 		}
 	};
 
-	const startMicrophone = async () => {
-		if (microphoneState === 'requesting' || microphoneState === 'on') {
+	const toggleMicrophone = async () => {
+		if (microphoneState === 'on') {
+			await stopMicrophone();
+			appendEntry({ role: 'status', text: 'マイクを停止しました。' });
 			return;
 		}
 
@@ -336,88 +304,6 @@ export const useCookLiveSession = ({
 		}
 
 		if (!sessionRef.current) {
-			return;
-		}
-
-		setMicrophoneState('requesting');
-
-		let stream: MediaStream | null = null;
-		let audioContext: AudioContext | null = null;
-		let source: MediaStreamAudioSourceNode | null = null;
-		let processor: ScriptProcessorNode | null = null;
-
-		try {
-			stream = await navigator.mediaDevices.getUserMedia({
-				audio: {
-					autoGainControl: true,
-					echoCancellation: true,
-					noiseSuppression: true,
-				},
-			});
-			audioContext = new AudioContext();
-			await audioContext.resume();
-			source = audioContext.createMediaStreamSource(stream);
-			processor = audioContext.createScriptProcessor(4096, 1, 1);
-
-			microphoneEnabledRef.current = true;
-			processor.onaudioprocess = (event) => {
-				const activeSession = sessionRef.current;
-
-				if (!activeSession || !microphoneEnabledRef.current || !audioContext) {
-					return;
-				}
-
-				const input = event.inputBuffer.getChannelData(0);
-				const pcmData = downsampleToPcm16Base64({
-					input,
-					inputSampleRate: audioContext.sampleRate,
-				});
-
-				if (!pcmData) {
-					return;
-				}
-
-				activeSession.sendRealtimeInput({
-					audio: {
-						data: pcmData,
-						mimeType: 'audio/pcm;rate=16000',
-					},
-				});
-			};
-
-			source.connect(processor);
-			processor.connect(audioContext.destination);
-			microphoneContextRef.current = audioContext;
-			microphoneSourceRef.current = source;
-			microphoneProcessorRef.current = processor;
-			microphoneStreamRef.current = stream;
-			setMicrophoneState('on');
-			appendEntry({ role: 'status', text: 'マイクを有効にしました。話しかけてください。' });
-		} catch (error) {
-			// Cleanup acquired resources on failure
-			if (stream) {
-				stream.getTracks().forEach((track) => track.stop());
-			}
-			if (source) {
-				source.disconnect();
-			}
-			if (processor) {
-				processor.disconnect();
-			}
-			if (audioContext) {
-				void audioContext.close();
-			}
-
-			setMicrophoneState('off');
-			setLatestError(error instanceof Error ? error.message : 'マイクを開始できませんでした。');
-			appendEntry({ role: 'status', text: 'マイクを開始できませんでした。' });
-		}
-	};
-
-	const toggleMicrophone = async () => {
-		if (microphoneState === 'on') {
-			stopMicrophone();
-			appendEntry({ role: 'status', text: 'マイクを停止しました。' });
 			return;
 		}
 

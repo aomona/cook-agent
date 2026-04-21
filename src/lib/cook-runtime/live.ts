@@ -299,9 +299,37 @@ const functionDeclarations: FunctionDeclaration[] = [
 	},
 ] as const;
 
-const allowedFunctionNames = functionDeclarations
+type CookRuntimeToolName = NonNullable<(typeof functionDeclarations)[number]['name']>;
+
+export const cookRuntimeToolNames = functionDeclarations
 	.map((declaration) => declaration.name)
-	.filter((name): name is string => typeof name === 'string' && name.length > 0);
+	.filter((name): name is CookRuntimeToolName => typeof name === 'string' && name.length > 0) as [
+	CookRuntimeToolName,
+	...CookRuntimeToolName[],
+];
+
+const allowedFunctionNames = cookRuntimeToolNames;
+
+type ExecuteCookRuntimeToolParams = {
+	planId: string;
+	sessionId?: string;
+	toolName: CookRuntimeToolName;
+	args: unknown;
+	userId: string;
+};
+
+type CookRuntimeToolContext = {
+	planId: string;
+	sessionId?: string;
+	userId: string;
+};
+
+type ResolvedSessionToolContext = {
+	resolvedSessionId: string;
+	fallbackStepId: string;
+};
+
+type CookRuntimeToolHandler = (args: unknown, context: CookRuntimeToolContext) => Promise<unknown>;
 
 const moveToStepSchema = z.object({
 	stepId: z.string().trim().min(1).max(120),
@@ -423,11 +451,9 @@ export const buildCookRuntimeLiveSessionPayload = async ({
 		console.error('Failed to load cook runtime snapshot for live payload.', error);
 	}
 
-	if (!snapshot) {
-		throw new Error('No owned snapshot found for plan.');
-	}
-
-	const systemInstructionText = buildSystemInstruction(snapshot);
+	const systemInstructionText = snapshot
+		? buildSystemInstruction(snapshot)
+		: buildFallbackSystemInstruction(planId);
 	const liveConfig = {
 		contextWindowCompression: { slidingWindow: {} },
 		inputAudioTranscription: {},
@@ -541,48 +567,20 @@ const requireCurrentStepId = async ({
 	return stepId;
 };
 
-export const executeCookRuntimeTool = async ({
-	args,
+const getSnapshotForTool = async ({
 	planId,
 	sessionId,
-	toolName,
 	userId,
-}: {
-	planId: string;
-	sessionId?: string;
-	toolName: (typeof functionDeclarations)[number]['name'];
-	args: unknown;
-	userId: string;
-}) => {
-	if (toolName === 'get_runtime_snapshot') {
-		const snapshot = sessionId
-			? await getOwnedCookSessionSnapshotBySessionId(sessionId, userId)
-			: await getOwnedCookSessionSnapshotByPlanId(planId, userId);
+}: CookRuntimeToolContext): Promise<CookSessionSnapshot | null> =>
+	sessionId
+		? getOwnedCookSessionSnapshotBySessionId(sessionId, userId)
+		: getOwnedCookSessionSnapshotByPlanId(planId, userId);
 
-		if (!snapshot) {
-			throw new Error('Cook session context not found.');
-		}
-
-		return summarizeSnapshotForModel(snapshot);
-	}
-
-	if (toolName === 'web_search') {
-		return webSearchWithTavily(tavilyWebSearchInputSchema.parse(args));
-	}
-
-	if (toolName === 'fetch_url') {
-		return fetchUrlTextWithTavily(tavilyFetchUrlInputSchema.parse(args));
-	}
-
-	if (toolName === 'start_cooking_session') {
-		return summarizeSnapshotForModel(
-			await startCookingSession({
-				planId,
-				userId,
-			}),
-		);
-	}
-
+const resolveSessionToolContext = async ({
+	planId,
+	sessionId,
+	userId,
+}: CookRuntimeToolContext): Promise<ResolvedSessionToolContext> => {
 	const resolvedSessionId = await requireSessionId({
 		planId,
 		providedSessionId: sessionId,
@@ -594,80 +592,217 @@ export const executeCookRuntimeTool = async ({
 		userId,
 	});
 
-	const snapshot =
-		toolName === 'pause_cooking_session'
-			? await pauseCookingSession({ sessionId: resolvedSessionId, userId })
-			: toolName === 'resume_cooking_session'
-				? await resumeCookingSession({ sessionId: resolvedSessionId, userId })
-				: toolName === 'complete_current_step'
-					? await completeCurrentCookingStep({ sessionId: resolvedSessionId, userId })
-					: toolName === 'move_to_step'
-						? await moveCookingSessionToStep({
-								sessionId: resolvedSessionId,
-								stepId: moveToStepSchema.parse(args).stepId,
-								userId,
-							})
-						: toolName === 'start_timer'
-							? await startSessionTimer({
-									sessionId: resolvedSessionId,
-									stepId: startTimerSchema.parse(args).stepId,
-									timerId: startTimerSchema.parse(args).timerId,
-									userId,
-								})
-							: toolName === 'pause_timer'
-								? await pauseSessionTimer({
-										sessionId: resolvedSessionId,
-										timerRowId: timerRowSchema.parse(args).timerRowId,
-										userId,
-									})
-								: toolName === 'resume_timer'
-									? await resumeSessionTimer({
-											sessionId: resolvedSessionId,
-											timerRowId: timerRowSchema.parse(args).timerRowId,
-											userId,
-										})
-									: toolName === 'cancel_timer'
-										? await cancelSessionTimer({
-												sessionId: resolvedSessionId,
-												timerRowId: timerRowSchema.parse(args).timerRowId,
-												userId,
-											})
-										: toolName === 'report_delay'
-											? await reportSessionDelay({
-													delayMinutes: reportDelaySchema.parse(args).delayMinutes,
-													message: reportDelaySchema.parse(args).message,
-													sessionId: resolvedSessionId,
-													stepId: reportDelaySchema.parse(args).stepId ?? fallbackStepId,
-													userId,
-												})
-											: toolName === 'report_mistake'
-												? await reportSessionMistake({
-														message: reportMistakeSchema.parse(args).message,
-														sessionId: resolvedSessionId,
-														stepId: reportMistakeSchema.parse(args).stepId ?? fallbackStepId,
-														userId,
-													})
-												: toolName === 'report_ingredient_shortage'
-													? await reportSessionIngredientShortage({
-															ingredientName:
-																reportIngredientShortageSchema.parse(args).ingredientName,
-															message: reportIngredientShortageSchema.parse(args).message,
-															replacementOptions:
-																reportIngredientShortageSchema.parse(args).replacementOptions,
-															sessionId: resolvedSessionId,
-															stepId: reportIngredientShortageSchema.parse(args).stepId,
-															userId,
-														})
-													: await requestRuntimeReplan({
-															message: requestReplanSchema.parse(args).message,
-															sessionId: resolvedSessionId,
-															stepId: requestReplanSchema.parse(args).stepId,
-															userId,
-														});
+	return {
+		resolvedSessionId,
+		fallbackStepId,
+	};
+};
 
+const summarizeRequiredToolSnapshot = (
+	snapshot: CookSessionSnapshot | null,
+	toolName: CookRuntimeToolName,
+) => {
 	if (!snapshot) {
 		throw new Error(`Unsupported tool: ${toolName}`);
 	}
 
 	return summarizeSnapshotForModel(snapshot);
+};
+
+const cookRuntimeToolHandlers: Record<CookRuntimeToolName, CookRuntimeToolHandler> = {
+	get_runtime_snapshot: async (_args, context) => {
+		const snapshot = await getSnapshotForTool(context);
+
+		if (!snapshot) {
+			throw new Error('Cook session context not found.');
+		}
+
+		return summarizeSnapshotForModel(snapshot);
+	},
+	start_cooking_session: async (_args, context) =>
+		summarizeSnapshotForModel(
+			await startCookingSession({
+				planId: context.planId,
+				userId: context.userId,
+			}),
+		),
+	pause_cooking_session: async (_args, context) => {
+		const { resolvedSessionId } = await resolveSessionToolContext(context);
+
+		return summarizeRequiredToolSnapshot(
+			await pauseCookingSession({ sessionId: resolvedSessionId, userId: context.userId }),
+			'pause_cooking_session',
+		);
+	},
+	resume_cooking_session: async (_args, context) => {
+		const { resolvedSessionId } = await resolveSessionToolContext(context);
+
+		return summarizeRequiredToolSnapshot(
+			await resumeCookingSession({ sessionId: resolvedSessionId, userId: context.userId }),
+			'resume_cooking_session',
+		);
+	},
+	complete_current_step: async (_args, context) => {
+		const { resolvedSessionId } = await resolveSessionToolContext(context);
+
+		return summarizeRequiredToolSnapshot(
+			await completeCurrentCookingStep({ sessionId: resolvedSessionId, userId: context.userId }),
+			'complete_current_step',
+		);
+	},
+	move_to_step: async (args, context) => {
+		const input = moveToStepSchema.parse(args);
+		const { resolvedSessionId } = await resolveSessionToolContext(context);
+
+		return summarizeRequiredToolSnapshot(
+			await moveCookingSessionToStep({
+				sessionId: resolvedSessionId,
+				stepId: input.stepId,
+				userId: context.userId,
+			}),
+			'move_to_step',
+		);
+	},
+	start_timer: async (args, context) => {
+		const input = startTimerSchema.parse(args);
+		const { resolvedSessionId } = await resolveSessionToolContext(context);
+
+		return summarizeRequiredToolSnapshot(
+			await startSessionTimer({
+				sessionId: resolvedSessionId,
+				stepId: input.stepId,
+				timerId: input.timerId,
+				userId: context.userId,
+			}),
+			'start_timer',
+		);
+	},
+	pause_timer: async (args, context) => {
+		const input = timerRowSchema.parse(args);
+		const { resolvedSessionId } = await resolveSessionToolContext(context);
+
+		return summarizeRequiredToolSnapshot(
+			await pauseSessionTimer({
+				sessionId: resolvedSessionId,
+				timerRowId: input.timerRowId,
+				userId: context.userId,
+			}),
+			'pause_timer',
+		);
+	},
+	resume_timer: async (args, context) => {
+		const input = timerRowSchema.parse(args);
+		const { resolvedSessionId } = await resolveSessionToolContext(context);
+
+		return summarizeRequiredToolSnapshot(
+			await resumeSessionTimer({
+				sessionId: resolvedSessionId,
+				timerRowId: input.timerRowId,
+				userId: context.userId,
+			}),
+			'resume_timer',
+		);
+	},
+	cancel_timer: async (args, context) => {
+		const input = timerRowSchema.parse(args);
+		const { resolvedSessionId } = await resolveSessionToolContext(context);
+
+		return summarizeRequiredToolSnapshot(
+			await cancelSessionTimer({
+				sessionId: resolvedSessionId,
+				timerRowId: input.timerRowId,
+				userId: context.userId,
+			}),
+			'cancel_timer',
+		);
+	},
+	report_delay: async (args, context) => {
+		const input = reportDelaySchema.parse(args);
+		const { fallbackStepId, resolvedSessionId } = await resolveSessionToolContext(context);
+
+		return summarizeRequiredToolSnapshot(
+			await reportSessionDelay({
+				delayMinutes: input.delayMinutes,
+				message: input.message,
+				sessionId: resolvedSessionId,
+				stepId: input.stepId ?? fallbackStepId,
+				userId: context.userId,
+			}),
+			'report_delay',
+		);
+	},
+	report_mistake: async (args, context) => {
+		const input = reportMistakeSchema.parse(args);
+		const { fallbackStepId, resolvedSessionId } = await resolveSessionToolContext(context);
+
+		return summarizeRequiredToolSnapshot(
+			await reportSessionMistake({
+				message: input.message,
+				sessionId: resolvedSessionId,
+				stepId: input.stepId ?? fallbackStepId,
+				userId: context.userId,
+			}),
+			'report_mistake',
+		);
+	},
+	report_ingredient_shortage: async (args, context) => {
+		const input = reportIngredientShortageSchema.parse(args);
+		const { resolvedSessionId } = await resolveSessionToolContext(context);
+
+		return summarizeRequiredToolSnapshot(
+			await reportSessionIngredientShortage({
+				ingredientName: input.ingredientName,
+				message: input.message,
+				replacementOptions: input.replacementOptions,
+				sessionId: resolvedSessionId,
+				stepId: input.stepId,
+				userId: context.userId,
+			}),
+			'report_ingredient_shortage',
+		);
+	},
+	request_replan: async (args, context) => {
+		const input = requestReplanSchema.parse(args);
+		const { resolvedSessionId } = await resolveSessionToolContext(context);
+
+		return summarizeRequiredToolSnapshot(
+			await requestRuntimeReplan({
+				message: input.message,
+				sessionId: resolvedSessionId,
+				stepId: input.stepId,
+				userId: context.userId,
+			}),
+			'request_replan',
+		);
+	},
+	web_search: async (args) => {
+		const input = tavilyWebSearchInputSchema.parse(args);
+
+		return webSearchWithTavily(input);
+	},
+	fetch_url: async (args) => {
+		const input = tavilyFetchUrlInputSchema.parse(args);
+
+		return fetchUrlTextWithTavily(input);
+	},
+};
+
+export const executeCookRuntimeTool = async ({
+	args,
+	planId,
+	sessionId,
+	toolName,
+	userId,
+}: ExecuteCookRuntimeToolParams) => {
+	const handler = cookRuntimeToolHandlers[toolName];
+
+	if (!handler) {
+		throw new Error(`Unsupported tool: ${toolName}`);
+	}
+
+	return handler(args, {
+		planId,
+		sessionId,
+		userId,
+	});
 };
