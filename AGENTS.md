@@ -1,0 +1,185 @@
+# AGENTS.md
+
+## プロジェクト概要
+
+このリポジトリは、AI 支援型の調理システムのプロトタイプです。
+
+プロダクトは次の 2 フェーズで構成されています。
+
+1. 計画フェーズ
+   - 1 つ以上のレシピ URL と人数を受け取る。
+   - レシピ情報を構造化された実行計画に変換する。
+   - 計画を機械可読な JSON として表現する。
+   - 計画をタイムライン形式の UI に表示し、ユーザーが確認・修正できるようにする。
+2. リアルタイム調理フェーズ
+   - 調理中に手順を 1 ステップずつ案内する。
+   - 進捗、遅延、ミス、材料不足に応答する。
+   - 全体を再生成するのではなく、影響を受けた部分だけを再計画する。
+
+このリポジトリは、本番向けのキッチンプラットフォームではなく、UX とエージェント挙動を検証するためのプロトタイプです。
+
+## アーキテクチャ概要
+
+- Next.js 16 App Router、React 19、strict TypeScript を採用。
+- pnpm workspace 構成で、メインアプリは `src/`、共通 UI は `workspaces/ui` に配置。
+- Tailwind CSS v4、Yamada UI、Biome、Drizzle ORM、Better Auth、AI SDK を利用。
+
+## プロダクト上の制約
+
+- レシピの元データと実行計画は分離して扱うこと。
+- 安定した構造化 JSON、部分的な再計画、応答性の高い実行時ガイダンスを優先すること。
+- 本番向けの抽象化よりも、プロトタイプとしての反復のしやすさを優先すること。
+
+## 重要なパス
+
+- `src/app/`、`src/lib/`、`src/db/`、`workspaces/ui/src/`
+- `biome.json`、`tsconfig.json`、`drizzle.config.ts`
+
+## コマンド
+
+特記がない限り、コマンドはリポジトリルートで実行してください。
+
+### インストール
+
+- `pnpm install`
+
+### 開発
+
+- `pnpm dev` - Next.js の開発サーバーを起動する。
+- `pnpm build` - 本番ビルドを作成する。
+- `pnpm start` - ビルド済みアプリを本番モードで起動する。
+
+### Lint とフォーマット
+
+- `pnpm lint` - `biome check` を実行する。
+- `pnpm format` - `biome format --write` を実行する。
+- `pnpm exec biome check --write <path>` - 特定ファイルやパスに対して lint / format 修正を行う。
+
+### 型チェック
+
+- 現在、`package.json` に専用の `typecheck` スクリプトはありません。
+- 型チェックが必要な場合は `pnpm exec tsc --noEmit` を使ってください。
+- workspace ごとの型チェックを追加した場合は、ここに正確なコマンドを追記してください。
+
+### テスト
+
+- `pnpm test` - 通常のローカル開発向けフローで Vitest を実行する。
+- `pnpm test:run` - Vitest を 1 回だけ実行する。
+- `pnpm test:watch` - Vitest を watch モードで実行する。
+- `pnpm test -- <path>` - 特定のテストファイルを実行する。
+
+### データベース
+
+- `pnpm exec drizzle-kit generate` - `src/db/schema.ts` からマイグレーションを生成する。
+- `pnpm exec drizzle-kit migrate` - マイグレーションを適用する。
+- `drizzle.config.ts` は `dotenv/config` 経由で `.env` の `DATABASE_URL` を読み込む。
+
+## 現在参照している環境変数
+
+- `DATABASE_URL`
+- `GITHUB_CLIENT_ID`
+- `GITHUB_CLIENT_SECRET`
+
+これらの値をハードコードしないでください。必要な箇所では、明確に失敗させるか、境界で検証してください。
+
+## コードスタイルガイド
+
+以下は既存コードと設定から導いたルールです。明示的なリファクタ依頼がない限り、これに合わせてください。
+
+### フォーマット
+
+- Biome を唯一の正として扱うこと。
+- インデントはスペースではなくタブを使うこと。
+- JavaScript / TypeScript ではシングルクォートを使うこと。
+- 行幅はおおむね 100 文字前後に保つこと。
+- 文末にはセミコロンを付けること。
+
+### import
+
+- 型専用 import は `import type` を使うこと。
+- import の並びは、外部パッケージ、`@/` のような内部エイリアス、相対 import の順を基本とすること。
+- ルートアプリの import には長い相対パスより `@/` エイリアスを優先すること。
+- 未使用 import は避けること。Biome が検出します。
+
+### TypeScript と型
+
+- strict TypeScript 互換を維持すること。
+- モジュール境界、公開 API、設定オブジェクト、複雑な戻り値には明示的な型を付けること。
+- 明らかなローカル変数は、可読性を損なわない範囲で型推論を許可すること。
+- コンポーネント props では、既存の流儀に合うなら `Readonly<{ ... }>` や明示的なオブジェクト型を使うこと。
+- 特にレシピ計画、タスク、タイマー、依存関係のデータ形状は明示的にモデリングすること。
+- `any` は避け、正確な型、ジェネリクス、または `unknown` と絞り込みを使うこと。
+- 既存コードには `process.env.X as string` があるが、新規コードでは安易なアサーションより安全な検証を優先すること。
+
+### 命名
+
+- React コンポーネント、型、型として扱う schema 風オブジェクトには PascalCase を使うこと。
+- 変数、関数、props、ヘルパーには camelCase を使うこと。
+- DB カラムは SQL 層では snake_case、TypeScript 側では camelCase を使うこと。
+- タスクや計画の命名はドメインに即して明示的にすること。例: `estimatedMinutes`、`dependsOn`、`failureRecovery`
+
+### React と Next.js
+
+- クライアント専用の挙動が必要になるまでは Server Components をデフォルトにすること。
+- hooks、ブラウザ API、クライアントイベントハンドラが必要な場合にだけ `'use client'` を付けること。
+- route handler は小さく保ち、大きくなったら `src/lib/` にロジックを移すこと。
+- `page.tsx`、`layout.tsx`、`route.ts` など App Router の慣習に従うこと。
+- UI は構造化された plan データから導出できるようにし、生のレシピ文へ強く結合しないこと。
+
+### 状態とデータモデリング
+
+- レシピ元データと execution-plan データは分離して保つこと。
+- plan には JSON フレンドリーで安定した構造を優先すること。
+- plan モデルには明示的な ID、依存関係、時間見積もり、リカバリーガイダンスを含めること。
+- 実行時イベントによる更新は、影響を受けた部分だけをパッチできるように設計すること。
+
+### データベースとバックエンド
+
+- Drizzle の既存パターンに従うこと。schema は `src/db/schema.ts`、relations はテーブル定義の近くに置くこと。
+- schema 定義では `notNull`、default、index、`onDelete` を明示的に指定することを優先する。
+- auth や DB 接続のフレームワーク連携は、薄く宣言的に保つこと。
+
+### エラーハンドリング
+
+- エラーを黙って握りつぶさないこと。
+- 必須設定がない場合は早めに失敗させること。
+- 境界では曖昧なメッセージではなく、構造化された実用的なエラーを返すこと。
+- planner、auth、DB フローに入れる前に、信頼できない入力は検証すること。
+
+### コメントとドキュメント
+
+- コメントは少なく、高い価値があるものだけにすること。
+- 説明コメントよりも、自明な命名と小さな関数を優先すること。
+- 意図が分かりにくい場合にだけコメントを追加すること。
+
+## コーディングエージェント向けの作業ルール
+
+- コード変更前に周辺ファイルを確認し、ローカルなパターンに合わせること。
+- 広く推測的に触るより、小さく外科的な変更を優先すること。
+- 別のスタイルでも書けるからといって、既存パターンを置き換えないこと。
+- 新しいツールやフレームワークを導入する場合は、スクリプトとドキュメントも追加すること。
+- plan 生成ロジックを変更する場合は、UI 描画と実行時パッチに耐えられる安定性を保つこと。
+- 利用可能な skill が作業内容に合致する場合は、積極的に skill を使うこと。
+- Git を扱う作業では、branch 名、commit message、PR title / body、review コメント整理を含め、原則として毎回 `git-naming` skill を先に読み込むこと。
+- Git を含む開発フローでは、変更後はその都度、意味のある変更単位ごとにコミットを作成すること。ユーザーが明示的に不要と言った場合だけ省略してよい。
+
+## Cursor / Copilot ルール
+
+- `.cursor/rules/` ディレクトリは現在ありません。
+- `.cursorrules` ファイルは現在ありません。
+- `.github/copilot-instructions.md` は現在ありません。
+- 将来これらが追加された場合は、矛盾する内容を重複させず、このファイルへ統合してください。
+
+## このプロトタイプにおける完了条件
+
+このプロトタイプでタスクが完了したとみなせるのは、次の状態を満たしたときです。
+
+- レシピ URL から構造化 plan を生成できる
+- plan を UI に描画できる
+- ユーザーが plan の修正を依頼できる
+- 実行時イベントによって plan 更新をトリガーできる
+- plan 変更後もアシスタントがガイダンスを継続できる
+- 実装が理解しやすく、反復しやすい状態を保てている
+
+Always use Context7 when I need library/API documentation, code generation, setup or configuration steps without me having to explicitly ask.
+ただし、yamada-uiを使用する際は、[https://yamada-ui.com/llms.txt] のサイトマップに従い、ドキュメントをfetchしてください。

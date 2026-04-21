@@ -1,0 +1,2 @@
+ALTER TABLE "plan_recipe_sources" ADD COLUMN "material_changes" jsonb DEFAULT '[]'::jsonb;--> statement-breakpoint
+ALTER TABLE "plan_recipe_sources" ADD COLUMN "adjustment_confirmed_at" timestamp with time zone;

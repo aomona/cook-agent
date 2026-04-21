@@ -1,0 +1,38 @@
+{
+	"skill_name": "readme-writer",
+	"evals": [
+		{
+			"id": 1,
+			"prompt": "このリポジトリの README をゼロから書き直して。今ある README は信用しないで、コードと設定を見て実態ベースで日本語でまとめてほしい。セットアップ、環境変数、開発コマンド、リポジトリ構成は必須。プロトタイプであることもちゃんと伝えて。",
+			"expected_output": "現行 README を土台にせず、リポジトリの実態に基づいた日本語 README を出力する。セットアップ、環境変数、開発コマンド、主要ディレクトリ、プロトタイプとしての位置づけが含まれる。",
+			"files": [],
+			"expectations": [
+				"The README includes verified pnpm-based setup and development commands such as `pnpm install` and `pnpm dev`.",
+				"The README documents the environment variables actually referenced by the repository rather than invented placeholders beyond confirmed usage.",
+				"The README describes the project as a prototype and explains the planning phase and real-time cooking phase."
+			]
+		},
+		{
+			"id": 2,
+			"prompt": "Need a contributor quickstart for this repo. Do not rewrite docs from the existing README. Inspect the project and add a concise English section that tells a new engineer how to install dependencies, configure env vars, run the dev server, lint, type-check, and run tests. Keep it practical and avoid deployment claims.",
+			"expected_output": "A concise English contributor quickstart grounded in the repository scripts and config, without relying on the existing README or inventing deployment instructions.",
+			"files": [],
+			"expectations": [
+				"The quickstart uses the repository's actual package manager and script names.",
+				"The quickstart mentions the verified type-check fallback command if no dedicated typecheck script exists.",
+				"The quickstart avoids unsupported claims about production deployment, CI, or hosting."
+			]
+		},
+		{
+			"id": 3,
+			"prompt": "このプロジェクトを初見のデザイナーやPMにも渡せる短めの README にしたいです。マーケ資料っぽくせず、今できることとできないことが分かる内容にしてください。技術スタックは軽く、代わりに main app の場所や planner 周りの重要パス、品質確認コマンドを入れてください。今の README の章立ては無視して構いません。",
+			"expected_output": "簡潔な日本語 README。過度な宣伝表現を避けつつ、現時点のスコープ、主要パス、品質確認コマンド、非ゴールや制約が分かる。",
+			"files": [],
+			"expectations": [
+				"The README includes real repository paths such as `src/app/`, `src/lib/`, `src/db/`, or `workspaces/ui/`.",
+				"The README includes verified quality commands like lint, format, tests, or type-checking commands present in the repo.",
+				"The README frames the project in terms of current scope, constraints, or non-goals instead of generic product marketing."
+			]
+		}
+	]
+}

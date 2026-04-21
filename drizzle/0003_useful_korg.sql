@@ -1,0 +1,1 @@
+CREATE INDEX "recipe_sources_processing_status_idx" ON "recipe_sources" USING btree ("processing_status");
