@@ -209,7 +209,10 @@ export const startCookingSession = async ({
 		});
 	} catch (error) {
 		// If unique constraint violation, return existing active session
-		if (error instanceof Error && error.message.includes('cooking_sessions_plan_user_active_unique')) {
+		if (
+			error instanceof Error &&
+			error.message.includes('cooking_sessions_plan_user_active_unique')
+		) {
 			const [existing] = await db
 				.select({ id: cookingSessions.id })
 				.from(cookingSessions)
@@ -249,7 +252,11 @@ export const pauseCookingSession = async ({
 	sessionId: string;
 	userId: string;
 }) => {
-	const session = await getOwnedSessionRecord({ sessionId, userId, allowedStatuses: activeSessionStatuses });
+	const session = await getOwnedSessionRecord({
+		sessionId,
+		userId,
+		allowedStatuses: activeSessionStatuses,
+	});
 
 	if (!session) {
 		throw new Error('Cooking session not found.');
@@ -282,7 +289,11 @@ export const resumeCookingSession = async ({
 	sessionId: string;
 	userId: string;
 }) => {
-	const session = await getOwnedSessionRecord({ sessionId, userId, allowedStatuses: activeSessionStatuses });
+	const session = await getOwnedSessionRecord({
+		sessionId,
+		userId,
+		allowedStatuses: activeSessionStatuses,
+	});
 
 	if (!session) {
 		throw new Error('Cooking session not found.');
@@ -317,7 +328,11 @@ export const moveCookingSessionToStep = async ({
 	stepId: string;
 	userId: string;
 }) => {
-	const session = await getOwnedSessionRecord({ sessionId, userId, allowedStatuses: activeSessionStatuses });
+	const session = await getOwnedSessionRecord({
+		sessionId,
+		userId,
+		allowedStatuses: activeSessionStatuses,
+	});
 
 	if (!session) {
 		throw new Error('Cooking session not found.');
@@ -364,7 +379,11 @@ export const completeCurrentCookingStep = async ({
 	sessionId: string;
 	userId: string;
 }) => {
-	const session = await getOwnedSessionRecord({ sessionId, userId, allowedStatuses: activeSessionStatuses });
+	const session = await getOwnedSessionRecord({
+		sessionId,
+		userId,
+		allowedStatuses: activeSessionStatuses,
+	});
 
 	if (!session) {
 		throw new Error('Cooking session not found.');
@@ -442,7 +461,11 @@ export const startSessionTimer = async ({
 	timerId: string;
 	userId: string;
 }) => {
-	const session = await getOwnedSessionRecord({ sessionId, userId, allowedStatuses: activeSessionStatuses });
+	const session = await getOwnedSessionRecord({
+		sessionId,
+		userId,
+		allowedStatuses: activeSessionStatuses,
+	});
 
 	if (!session) {
 		throw new Error('Cooking session not found.');
@@ -507,7 +530,10 @@ export const startSessionTimer = async ({
 		});
 	} catch (error) {
 		// If unique constraint violation from concurrent request, just return current snapshot
-		if (error instanceof Error && error.message.includes('session_timers_session_step_plantimer_running_unique')) {
+		if (
+			error instanceof Error &&
+			error.message.includes('session_timers_session_step_plantimer_running_unique')
+		) {
 			return getOwnedCookSessionSnapshotBySessionId(session.id, userId);
 		}
 		throw error;
@@ -527,7 +553,11 @@ const updateSessionTimerStatus = async ({
 	timerRowId: string;
 	userId: string;
 }) => {
-	const session = await getOwnedSessionRecord({ sessionId, userId, allowedStatuses: activeSessionStatuses });
+	const session = await getOwnedSessionRecord({
+		sessionId,
+		userId,
+		allowedStatuses: activeSessionStatuses,
+	});
 
 	if (!session) {
 		throw new Error('Cooking session not found.');
@@ -687,7 +717,11 @@ export const reportSessionDelay = async ({
 	message?: string;
 	userId: string;
 }) => {
-	const session = await getOwnedSessionRecord({ sessionId, userId, allowedStatuses: activeSessionStatuses });
+	const session = await getOwnedSessionRecord({
+		sessionId,
+		userId,
+		allowedStatuses: activeSessionStatuses,
+	});
 
 	if (!session) {
 		throw new Error('Cooking session not found.');
@@ -718,7 +752,11 @@ export const reportSessionMistake = async ({
 	message: string;
 	userId: string;
 }) => {
-	const session = await getOwnedSessionRecord({ sessionId, userId, allowedStatuses: activeSessionStatuses });
+	const session = await getOwnedSessionRecord({
+		sessionId,
+		userId,
+		allowedStatuses: activeSessionStatuses,
+	});
 
 	if (!session) {
 		throw new Error('Cooking session not found.');
@@ -752,7 +790,11 @@ export const reportSessionIngredientShortage = async ({
 	message?: string;
 	userId: string;
 }) => {
-	const session = await getOwnedSessionRecord({ sessionId, userId, allowedStatuses: activeSessionStatuses });
+	const session = await getOwnedSessionRecord({
+		sessionId,
+		userId,
+		allowedStatuses: activeSessionStatuses,
+	});
 
 	if (!session) {
 		throw new Error('Cooking session not found.');
@@ -784,7 +826,11 @@ export const requestRuntimeReplan = async ({
 	message: string;
 	userId: string;
 }) => {
-	const session = await getOwnedSessionRecord({ sessionId, userId, allowedStatuses: activeSessionStatuses });
+	const session = await getOwnedSessionRecord({
+		sessionId,
+		userId,
+		allowedStatuses: activeSessionStatuses,
+	});
 
 	if (!session) {
 		throw new Error('Cooking session not found.');

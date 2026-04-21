@@ -8,7 +8,7 @@ describe('buildNormalizedIngredients', () => {
 	test('uses structured material amounts when available', () => {
 		expect(
 			buildNormalizedIngredients({
-				ingredientsText: ['fallback line'],
+				ingredientsText: ['玉ねぎ 1/2個 薄切り'],
 				materials: [
 					{
 						amount: {
@@ -86,6 +86,45 @@ describe('buildNormalizedIngredients', () => {
 			},
 		]);
 	});
+
+	test('preserves unstructured ingredient lines when materials are only partial', () => {
+		expect(
+			buildNormalizedIngredients({
+				ingredientsText: ['玉ねぎ 1/2個 薄切り', '塩 少々'],
+				materials: [
+					{
+						amount: {
+							max: null,
+							min: null,
+							text: '1/2個',
+							unit: '個',
+							value: 0.5,
+						},
+						name: '玉ねぎ',
+						optional: false,
+						preparation: '薄切り',
+						rawLine: '玉ねぎ 1/2個 薄切り',
+					},
+				],
+			}),
+		).toEqual([
+			{
+				amount: '1/2個',
+				amountMax: undefined,
+				amountMin: undefined,
+				amountValue: 0.5,
+				id: 'ingredient-1',
+				name: '玉ねぎ',
+				optional: false,
+				preparation: '薄切り',
+				unit: '個',
+			},
+			{
+				id: 'ingredient-2',
+				name: '塩 少々',
+			},
+		]);
+	});
 });
 
 describe('normalizeRecipeSummary', () => {
@@ -95,6 +134,19 @@ describe('normalizeRecipeSummary', () => {
 			instructionsText: ['混ぜる'],
 			materials: [],
 			servingsText: '1~2人前',
+			summary: 'summary',
+			title: 'title',
+		});
+
+		expect(normalizedRecipe?.servings).toBeUndefined();
+	});
+
+	test('treats full-width ranged servings as ambiguous instead of parsing a single number', () => {
+		const normalizedRecipe = normalizeRecipeSummary({
+			ingredientsText: [],
+			instructionsText: ['混ぜる'],
+			materials: [],
+			servingsText: '1～2人前',
 			summary: 'summary',
 			title: 'title',
 		});

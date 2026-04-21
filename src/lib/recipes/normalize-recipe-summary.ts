@@ -67,7 +67,7 @@ const parseServings = (servingsText?: string | null): number | undefined => {
 	const normalized = servingsText
 		.replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
 		.replace(/／/g, '/')
-		.replace(/〜/g, '~');
+		.replace(/[〜～]/g, '~');
 
 	if (/\d\s*[~-]\s*\d/.test(normalized)) {
 		return undefined;
@@ -86,12 +86,27 @@ export const buildNormalizedIngredients = ({
 	materials: RecipeSourceMaterialSummary[];
 }): NormalizedIngredient[] => {
 	if (materials.length > 0) {
-		return materials.map((material, index) =>
+		const normalizedIngredients = materials.map((material, index) =>
 			normalizeIngredientFromMaterial({
 				index,
 				material,
 			}),
 		);
+		const coveredIngredientLines = new Set(
+			materials.flatMap((material) =>
+				[material.rawLine, material.name]
+					.map((value) => value?.trim())
+					.filter((value): value is string => Boolean(value)),
+			),
+		);
+		const fallbackIngredients = ingredientsText
+			.filter((ingredient) => !coveredIngredientLines.has(ingredient.trim()))
+			.map((ingredient, index) => ({
+				id: `ingredient-${normalizedIngredients.length + index + 1}`,
+				name: ingredient,
+			}));
+
+		return [...normalizedIngredients, ...fallbackIngredients];
 	}
 
 	return ingredientsText.map((ingredient, index) => ({

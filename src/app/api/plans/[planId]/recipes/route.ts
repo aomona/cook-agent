@@ -2,7 +2,7 @@ import { cookies } from 'next/headers';
 import { after } from 'next/server';
 import { z } from 'zod';
 import { createRecipeSourceForPlan, getRequestActor } from '@/lib/create-session';
-import { processRecipeSource } from '@/lib/recipes/process-recipe-source';
+import { processRecipeSourceAndSyncPlans } from '@/lib/recipes/process-recipe-source';
 
 const trimmedUrlSchema = z
 	.string()
@@ -55,7 +55,7 @@ export async function POST(request: Request, context: { params: Promise<{ planId
 		});
 
 		after(async () => {
-			await processRecipeSource(recipe.id, {
+			await processRecipeSourceAndSyncPlans(recipe.id, {
 				sourceText: body.type === 'text' ? value : undefined,
 			});
 		});

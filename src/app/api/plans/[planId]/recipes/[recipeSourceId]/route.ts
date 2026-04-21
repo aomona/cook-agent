@@ -1,10 +1,12 @@
 import { cookies } from 'next/headers';
+import { after } from 'next/server';
 import { z } from 'zod';
 import {
 	deleteRecipeSourceFromPlan,
 	getRequestActor,
 	updateRecipeBaseServingsForPlan,
 } from '@/lib/create-session';
+import { syncAdjustedRecipeForPlan } from '@/lib/recipes/adjust-plan-recipes';
 
 const routeParamsSchema = z.object({
 	planId: z.uuid(),
@@ -51,6 +53,8 @@ const getPatchRecipeErrorResponse = (
 	return { message: 'Failed to update recipe servings.', status: 500, shouldLog: true };
 };
 
+export const runtime = 'nodejs';
+
 export async function PATCH(
 	request: Request,
 	context: { params: Promise<{ planId: string; recipeSourceId: string }> },
@@ -70,6 +74,13 @@ export async function PATCH(
 			recipeSourceId: params.recipeSourceId,
 			servings: body.servings,
 			userId: actor.userId,
+		});
+
+		after(async () => {
+			await syncAdjustedRecipeForPlan({
+				planId: params.planId,
+				recipeSourceId: params.recipeSourceId,
+			});
 		});
 
 		return Response.json({ recipe });
