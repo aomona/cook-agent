@@ -15,6 +15,7 @@ import {
 	startSessionTimer,
 } from '@/lib/cook-runtime/actions';
 import { getRequestActor } from '@/lib/create-session';
+import { getInvalidOriginResponse } from '@/lib/network/same-origin';
 
 const routeParamsSchema = z.object({
 	sessionId: z.uuid(),
@@ -76,9 +77,30 @@ const actionSchema = z.discriminatedUnion('type', [
 	}),
 ]);
 
+const notFoundMessages = new Set([
+	'Cooking session not found.',
+	'Step not found.',
+	'Timer not found.',
+]);
+
+const badRequestMessages = new Set([
+	'Cooking session is not in an allowed state.',
+	'Timer must be running to pause.',
+	'Timer is no longer running.',
+	'Timer must be paused to resume.',
+	'Timer is no longer paused.',
+	'Timer is already cancelled.',
+]);
+
 export const runtime = 'nodejs';
 
 export async function POST(request: Request, context: { params: Promise<{ sessionId: string }> }) {
+	const invalidOriginResponse = getInvalidOriginResponse(request);
+
+	if (invalidOriginResponse) {
+		return invalidOriginResponse;
+	}
+
 	const actor = await getRequestActor(await cookies());
 
 	if (!actor) {
@@ -163,8 +185,22 @@ export async function POST(request: Request, context: { params: Promise<{ sessio
 
 		return Response.json({ snapshot });
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Failed to update cooking session.';
+		if (error instanceof z.ZodError) {
+			return Response.json({ message: 'Invalid cooking session action.' }, { status: 400 });
+		}
 
-		return Response.json({ message }, { status: 400 });
+		if (error instanceof Error) {
+			if (notFoundMessages.has(error.message)) {
+				return Response.json({ message: error.message }, { status: 404 });
+			}
+
+			if (badRequestMessages.has(error.message)) {
+				return Response.json({ message: error.message }, { status: 400 });
+			}
+		}
+
+		console.error('Failed to update cooking session.', error);
+
+		return Response.json({ message: 'Failed to update cooking session.' }, { status: 500 });
 	}
 }

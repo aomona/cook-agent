@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { type PlannerStreamEvent, streamCookingPlan } from '@/lib/ai/planner';
 import { getRequestActor } from '@/lib/create-session';
+import { getInvalidOriginResponse } from '@/lib/network/same-origin';
 import { buildPlanGenerationInput, saveGeneratedPlanVersion } from '@/lib/plans/queries';
 import { planGenerationOptionsSchema } from '@/lib/plans/schema';
 import {
@@ -18,6 +19,12 @@ export const runtime = 'nodejs';
 export const maxDuration = 180;
 
 export async function POST(request: Request, context: { params: Promise<{ planId: string }> }) {
+	const invalidOriginResponse = getInvalidOriginResponse(request);
+
+	if (invalidOriginResponse) {
+		return invalidOriginResponse;
+	}
+
 	const cookieStore = await cookies();
 	const actor = await getRequestActor(cookieStore);
 

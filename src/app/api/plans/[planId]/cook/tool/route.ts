@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { cookRuntimeToolNames, executeCookRuntimeTool } from '@/lib/cook-runtime/live';
 import { getRequestActor } from '@/lib/create-session';
+import { getInvalidOriginResponse } from '@/lib/network/same-origin';
 
 const routeParamsSchema = z.object({
 	planId: z.uuid(),
@@ -48,7 +49,7 @@ const getToolErrorResponse = (error: unknown): { message: string; status: number
 			return { message: error.message, status: 400 };
 		}
 
-		return { message: error.message || 'Failed to execute tool.', status: 500 };
+		return { message: 'Failed to execute tool.', status: 500 };
 	}
 
 	return { message: 'Failed to execute tool.', status: 500 };
@@ -57,6 +58,12 @@ const getToolErrorResponse = (error: unknown): { message: string; status: number
 export const runtime = 'nodejs';
 
 export async function POST(request: Request, context: { params: Promise<{ planId: string }> }) {
+	const invalidOriginResponse = getInvalidOriginResponse(request);
+
+	if (invalidOriginResponse) {
+		return invalidOriginResponse;
+	}
+
 	const actor = await getRequestActor(await cookies());
 
 	if (!actor) {
@@ -77,6 +84,10 @@ export async function POST(request: Request, context: { params: Promise<{ planId
 		return Response.json({ result });
 	} catch (error) {
 		const { message, status } = getToolErrorResponse(error);
+
+		if (status >= 500) {
+			console.error('Failed to execute cook runtime tool.', error);
+		}
 
 		return Response.json({ message }, { status });
 	}

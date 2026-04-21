@@ -1,6 +1,5 @@
 import { Button, Card, Flex, Heading, Text, VStack } from '@workspaces/ui';
 import { headers } from 'next/headers';
-import NextLink from 'next/link';
 import { auth } from '@/lib/auth';
 import { getPlanListItems } from '@/lib/plans/queries';
 import { PlanListInfinite } from './plan-list-infinite';
@@ -34,11 +33,11 @@ export default async function Home() {
 			<VStack align="stretch" gap="lg" maxW="3xl" textAlign="left" w="full">
 				<Flex align="center" gap="md" justify="space-between">
 					<Heading size="xl">調理計画一覧</Heading>
-					<NextLink href="/create/start">
-						<Button as="span" variant="solid">
+					<form action="/create/start" method="post">
+						<Button type="submit" variant="solid">
 							新規作成
 						</Button>
-					</NextLink>
+					</form>
 				</Flex>
 
 				{plans.length === 0 ? (

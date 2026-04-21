@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { getRequestActor } from '@/lib/create-session';
+import { getInvalidOriginResponse } from '@/lib/network/same-origin';
 import { planningSettingsSchema } from '@/lib/planning-settings';
 import {
 	getUserPlanningSettingsState,
@@ -26,6 +27,12 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+	const invalidOriginResponse = getInvalidOriginResponse(request);
+
+	if (invalidOriginResponse) {
+		return invalidOriginResponse;
+	}
+
 	const cookieStore = await cookies();
 	const actor = await getRequestActor(cookieStore);
 

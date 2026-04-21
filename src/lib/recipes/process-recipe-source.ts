@@ -3,44 +3,55 @@ import 'server-only';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { recipeSources } from '@/db/schema';
-import { assertSafePublicHttpUrl } from '@/lib/network/safe-url';
+import { fetchSafePublicText } from '@/lib/network/safe-url';
 import { syncAdjustedRecipesForLinkedSource } from '@/lib/recipes/adjust-plan-recipes';
 import { extractHtmlText } from '@/lib/recipes/extract-html-text';
 import { normalizeRecipeSummary } from '@/lib/recipes/normalize-recipe-summary';
 import { summarizeRecipeSource } from '@/lib/recipes/summarize-recipe-source';
 
+const genericProcessingErrorMessage =
+	'レシピの処理に失敗しました。しばらくしてからもう一度お試しください。';
+
+const knownProcessingErrorMessages = new Set([
+	'HTTP または HTTPS のレシピ URL を入力してください。',
+	'この URL は取得できません。',
+	'この URL は取得できません。別の URL を入力してください。',
+	'この URL には無効なリダイレクトが含まれています。',
+	'取得したページが大きすぎます。別の URL を試してください。',
+	'URL の取得がタイムアウトしました。',
+	'レシピ URL の取得に失敗しました。ページを確認してください。',
+	'レシピページから本文を読み取れませんでした。',
+	'レシピテキストが見つかりません。再入力してください。',
+]);
+
 const getErrorMessage = (error: unknown): string => {
-	if (error instanceof Error && error.message) {
+	if (error instanceof Error && knownProcessingErrorMessages.has(error.message)) {
 		return error.message;
 	}
 
-	return 'Unknown processing error.';
-};
-
-const assertSafeRecipeUrl = async (value: string): Promise<URL> => {
-	return assertSafePublicHttpUrl(value, {
-		invalidProtocolMessage: 'HTTP または HTTPS のレシピ URL を入力してください。',
-	});
+	return genericProcessingErrorMessage;
 };
 
 const fetchSourceTextFromUrl = async (url: string): Promise<string> => {
-	const safeUrl = await assertSafeRecipeUrl(url);
-	const response = await fetch(safeUrl, {
-		cache: 'no-store',
+	const { response, text } = await fetchSafePublicText(url, {
+		blockedMessage: 'この URL は取得できません。別の URL を入力してください。',
 		headers: {
 			'User-Agent': 'cook-agent/0.1',
 		},
+		invalidProtocolMessage: 'HTTP または HTTPS のレシピ URL を入力してください。',
+		invalidRedirectMessage: 'この URL には無効なリダイレクトが含まれています。',
+		timeoutMessage: 'URL の取得がタイムアウトしました。',
+		tooLargeMessage: '取得したページが大きすぎます。別の URL を試してください。',
 	});
 
 	if (!response.ok) {
-		throw new Error(`Failed to fetch recipe URL (${response.status}).`);
+		throw new Error('レシピ URL の取得に失敗しました。ページを確認してください。');
 	}
 
-	const html = await response.text();
-	const extractedText = extractHtmlText(html);
+	const extractedText = extractHtmlText(text);
 
 	if (!extractedText) {
-		throw new Error('The recipe page did not contain readable text.');
+		throw new Error('レシピページから本文を読み取れませんでした。');
 	}
 
 	return extractedText;

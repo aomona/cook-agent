@@ -6,6 +6,7 @@ import {
 	getRequestActor,
 } from '@/lib/create-session';
 import { isProduction } from '@/lib/env';
+import { getInvalidOriginResponse } from '@/lib/network/same-origin';
 import { deleteOwnedPlan } from '@/lib/plans/queries';
 
 export async function GET(_request: Request, context: { params: Promise<{ planId: string }> }) {
@@ -26,7 +27,13 @@ export async function GET(_request: Request, context: { params: Promise<{ planId
 	return Response.json({ plan });
 }
 
-export async function DELETE(_request: Request, context: { params: Promise<{ planId: string }> }) {
+export async function DELETE(request: Request, context: { params: Promise<{ planId: string }> }) {
+	const invalidOriginResponse = getInvalidOriginResponse(request);
+
+	if (invalidOriginResponse) {
+		return invalidOriginResponse;
+	}
+
 	const { planId } = await context.params;
 	const cookieStore = await cookies();
 	const actor = await getRequestActor(cookieStore);

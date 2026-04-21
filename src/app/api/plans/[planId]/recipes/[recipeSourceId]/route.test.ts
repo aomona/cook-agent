@@ -55,6 +55,9 @@ describe('PATCH /api/plans/[planId]/recipes/[recipeSourceId]', () => {
 		const response = await PATCH(
 			new Request(`http://localhost/api/plans/${planId}/recipes/${recipeSourceId}`, {
 				body: JSON.stringify({ servings: 4 }),
+				headers: {
+					origin: 'http://localhost',
+				},
 				method: 'PATCH',
 			}),
 			{
@@ -76,5 +79,27 @@ describe('PATCH /api/plans/[planId]/recipes/[recipeSourceId]', () => {
 			planId,
 			recipeSourceId,
 		});
+	});
+
+	test('returns 403 when the origin header is missing', async () => {
+		const planId = '11111111-1111-4111-8111-111111111111';
+		const recipeSourceId = '22222222-2222-4222-8222-222222222222';
+
+		const response = await PATCH(
+			new Request(`http://localhost/api/plans/${planId}/recipes/${recipeSourceId}`, {
+				body: JSON.stringify({ servings: 4 }),
+				method: 'PATCH',
+			}),
+			{
+				params: Promise.resolve({
+					planId,
+					recipeSourceId,
+				}),
+			},
+		);
+
+		expect(response.status).toBe(403);
+		await expect(response.json()).resolves.toEqual({ message: 'Forbidden.' });
+		expect(updateRecipeBaseServingsForPlanMock).not.toHaveBeenCalled();
 	});
 });

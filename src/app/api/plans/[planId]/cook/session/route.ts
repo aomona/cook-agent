@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { startCookingSession } from '@/lib/cook-runtime/actions';
 import { getOwnedCookSessionSnapshotByPlanId } from '@/lib/cook-runtime/queries';
 import { getRequestActor } from '@/lib/create-session';
+import { getInvalidOriginResponse } from '@/lib/network/same-origin';
 
 const routeParamsSchema = z.object({
 	planId: z.uuid(),
@@ -27,7 +28,13 @@ export async function GET(_: Request, context: { params: Promise<{ planId: strin
 	return Response.json({ snapshot });
 }
 
-export async function POST(_: Request, context: { params: Promise<{ planId: string }> }) {
+export async function POST(request: Request, context: { params: Promise<{ planId: string }> }) {
+	const invalidOriginResponse = getInvalidOriginResponse(request);
+
+	if (invalidOriginResponse) {
+		return invalidOriginResponse;
+	}
+
 	const actor = await getRequestActor(await cookies());
 
 	if (!actor) {

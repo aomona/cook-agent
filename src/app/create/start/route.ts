@@ -7,6 +7,7 @@ import {
 	getRequestActor,
 } from '@/lib/create-session';
 import { isProduction } from '@/lib/env';
+import { getInvalidOriginResponse } from '@/lib/network/same-origin';
 import { getOwnedDraftPlan } from '@/lib/plans/queries';
 
 const cookieOptions = {
@@ -17,7 +18,13 @@ const cookieOptions = {
 	secure: isProduction,
 };
 
-export async function GET(request: Request) {
+export async function POST(request: Request) {
+	const invalidOriginResponse = getInvalidOriginResponse(request);
+
+	if (invalidOriginResponse) {
+		return invalidOriginResponse;
+	}
+
 	const cookieStore = await cookies();
 	const actor = await getRequestActor(cookieStore);
 

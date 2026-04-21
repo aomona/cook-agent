@@ -6,6 +6,7 @@ import {
 	getRequestActor,
 	updateRecipeBaseServingsForPlan,
 } from '@/lib/create-session';
+import { getInvalidOriginResponse } from '@/lib/network/same-origin';
 import { syncAdjustedRecipeForPlan } from '@/lib/recipes/adjust-plan-recipes';
 
 const routeParamsSchema = z.object({
@@ -59,6 +60,12 @@ export async function PATCH(
 	request: Request,
 	context: { params: Promise<{ planId: string; recipeSourceId: string }> },
 ) {
+	const invalidOriginResponse = getInvalidOriginResponse(request);
+
+	if (invalidOriginResponse) {
+		return invalidOriginResponse;
+	}
+
 	const cookieStore = await cookies();
 	const actor = await getRequestActor(cookieStore);
 
@@ -96,9 +103,15 @@ export async function PATCH(
 }
 
 export async function DELETE(
-	_request: Request,
+	request: Request,
 	context: { params: Promise<{ planId: string; recipeSourceId: string }> },
 ) {
+	const invalidOriginResponse = getInvalidOriginResponse(request);
+
+	if (invalidOriginResponse) {
+		return invalidOriginResponse;
+	}
+
 	const cookieStore = await cookies();
 	const actor = await getRequestActor(cookieStore);
 

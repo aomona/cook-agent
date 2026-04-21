@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { activeCreatePlanCookieName, getRequestActor } from '@/lib/create-session';
 import { isProduction } from '@/lib/env';
+import { getInvalidOriginResponse } from '@/lib/network/same-origin';
 import { getOwnedDraftPlan } from '@/lib/plans/queries';
 
 const cookieOptions = {
@@ -12,7 +13,13 @@ const cookieOptions = {
 	secure: isProduction,
 };
 
-export async function GET(request: Request, context: { params: Promise<{ planId: string }> }) {
+export async function POST(request: Request, context: { params: Promise<{ planId: string }> }) {
+	const invalidOriginResponse = getInvalidOriginResponse(request);
+
+	if (invalidOriginResponse) {
+		return invalidOriginResponse;
+	}
+
 	const cookieStore = await cookies();
 	const actor = await getRequestActor(cookieStore);
 

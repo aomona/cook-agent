@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { after } from 'next/server';
 import { z } from 'zod';
 import { createRecipeSourceForPlan, getRequestActor } from '@/lib/create-session';
+import { getInvalidOriginResponse } from '@/lib/network/same-origin';
 import { processRecipeSourceAndSyncPlans } from '@/lib/recipes/process-recipe-source';
 
 const trimmedUrlSchema = z
@@ -20,12 +21,25 @@ const addRecipeSchema = z.discriminatedUnion('type', [
 	}),
 ]);
 
-const getErrorMessage = (error: unknown): string => {
-	if (error instanceof Error && error.message) {
-		return error.message;
+const getErrorResponse = (
+	error: unknown,
+): { message: string; shouldLog?: boolean; status: number } => {
+	if (error instanceof z.ZodError) {
+		return {
+			message: error.issues[0]?.message ?? 'Invalid recipe input.',
+			status: 400,
+		};
 	}
 
-	return 'Failed to add recipe.';
+	if (error instanceof Error && error.message === 'Plan not found.') {
+		return { message: error.message, status: 404 };
+	}
+
+	return {
+		message: 'Failed to add recipe.',
+		shouldLog: true,
+		status: 500,
+	};
 };
 
 const normalizeUrl = (value: string): string => {
@@ -36,6 +50,12 @@ const normalizeUrl = (value: string): string => {
 export const runtime = 'nodejs';
 
 export async function POST(request: Request, context: { params: Promise<{ planId: string }> }) {
+	const invalidOriginResponse = getInvalidOriginResponse(request);
+
+	if (invalidOriginResponse) {
+		return invalidOriginResponse;
+	}
+
 	const cookieStore = await cookies();
 	const actor = await getRequestActor(cookieStore);
 
@@ -62,15 +82,11 @@ export async function POST(request: Request, context: { params: Promise<{ planId
 
 		return Response.json({ recipe }, { status: 202 });
 	} catch (error) {
-		if (error instanceof z.ZodError) {
-			return Response.json(
-				{ message: error.issues[0]?.message ?? 'Invalid recipe input.' },
-				{ status: 400 },
-			);
-		}
+		const { message, shouldLog, status } = getErrorResponse(error);
 
-		const message = getErrorMessage(error);
-		const status = message === 'Plan not found.' ? 404 : 400;
+		if (shouldLog) {
+			console.error(error);
+		}
 
 		return Response.json({ message }, { status });
 	}

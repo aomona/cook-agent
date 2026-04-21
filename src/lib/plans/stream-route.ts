@@ -29,7 +29,7 @@ export const getPlannerRouteErrorResponse = (
 			return { message: error.message, status: 400 };
 		}
 
-		return { message: error.message || fallbackMessage, status: 500 };
+		return { message: fallbackMessage, status: 500 };
 	}
 
 	return { message: fallbackMessage, status: 500 };

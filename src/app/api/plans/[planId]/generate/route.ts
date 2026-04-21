@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { generateCookingPlan } from '@/lib/ai/planner';
 import { getRequestActor } from '@/lib/create-session';
+import { getInvalidOriginResponse } from '@/lib/network/same-origin';
 import { buildPlanGenerationInput, saveGeneratedPlanVersion } from '@/lib/plans/queries';
 import { planGenerationOptionsSchema } from '@/lib/plans/schema';
 
@@ -27,7 +28,7 @@ const getErrorResponse = (error: unknown): { message: string; status: number } =
 			return { message: error.message, status: 400 };
 		}
 
-		return { message: error.message || 'Failed to generate plan.', status: 500 };
+		return { message: 'Failed to generate plan.', status: 500 };
 	}
 
 	return { message: 'Failed to generate plan.', status: 500 };
@@ -36,6 +37,12 @@ const getErrorResponse = (error: unknown): { message: string; status: number } =
 export const runtime = 'nodejs';
 
 export async function POST(request: Request, context: { params: Promise<{ planId: string }> }) {
+	const invalidOriginResponse = getInvalidOriginResponse(request);
+
+	if (invalidOriginResponse) {
+		return invalidOriginResponse;
+	}
+
 	const cookieStore = await cookies();
 	const actor = await getRequestActor(cookieStore);
 

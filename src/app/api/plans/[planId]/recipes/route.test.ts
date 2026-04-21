@@ -52,6 +52,9 @@ describe('POST /api/plans/[planId]/recipes', () => {
 					type: 'text',
 					value: 'レシピ本文',
 				}),
+				headers: {
+					origin: 'http://localhost',
+				},
 				method: 'POST',
 			}),
 			{
@@ -71,5 +74,26 @@ describe('POST /api/plans/[planId]/recipes', () => {
 		expect(processRecipeSourceAndSyncPlansMock).toHaveBeenCalledWith('recipe-1', {
 			sourceText: 'レシピ本文',
 		});
+	});
+
+	test('returns 403 when the origin header is missing', async () => {
+		const response = await POST(
+			new Request('http://localhost/api/plans/plan-1/recipes', {
+				body: JSON.stringify({
+					type: 'text',
+					value: 'レシピ本文',
+				}),
+				method: 'POST',
+			}),
+			{
+				params: Promise.resolve({
+					planId: 'plan-1',
+				}),
+			},
+		);
+
+		expect(response.status).toBe(403);
+		await expect(response.json()).resolves.toEqual({ message: 'Forbidden.' });
+		expect(createRecipeSourceForPlanMock).not.toHaveBeenCalled();
 	});
 });

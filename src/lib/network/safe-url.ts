@@ -5,8 +5,22 @@ import { isIP } from 'node:net';
 
 type SafeUrlMessages = {
 	blockedMessage?: string;
+	invalidRedirectMessage?: string;
 	invalidProtocolMessage?: string;
 };
+
+type SafePublicFetchOptions = SafeUrlMessages & {
+	headers?: HeadersInit;
+	maxRedirects?: number;
+	maxResponseBytes?: number;
+	timeoutMessage?: string;
+	timeoutMs?: number;
+	tooLargeMessage?: string;
+};
+
+const defaultFetchTimeoutMs = 10_000;
+const defaultMaxRedirects = 3;
+const defaultMaxResponseBytes = 1_000_000;
 
 const isBlockedIpv4 = (address: string): boolean => {
 	const octets = address.split('.').map((segment) => Number.parseInt(segment, 10));
@@ -100,10 +114,17 @@ export const assertSafePublicHttpUrl = async (
 	value: string,
 	{
 		blockedMessage = 'この URL は取得できません。',
+		invalidRedirectMessage = 'この URL には無効なリダイレクトが含まれています。',
 		invalidProtocolMessage = 'HTTP または HTTPS の URL のみ取得できます。',
 	}: SafeUrlMessages = {},
 ): Promise<URL> => {
-	const url = new URL(value);
+	let url: URL;
+
+	try {
+		url = new URL(value);
+	} catch {
+		throw new Error(invalidRedirectMessage);
+	}
 
 	if (!['http:', 'https:'].includes(url.protocol)) {
 		throw new Error(invalidProtocolMessage);
@@ -130,4 +151,113 @@ export const assertSafePublicHttpUrl = async (
 	}
 
 	return url;
+};
+
+const readResponseTextWithinLimit = async (
+	response: Response,
+	maxResponseBytes: number,
+	tooLargeMessage: string,
+): Promise<string> => {
+	if (!response.body) {
+		return '';
+	}
+
+	const reader = response.body.getReader();
+	const decoder = new TextDecoder();
+	let totalBytes = 0;
+	let text = '';
+
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+
+			if (done) {
+				break;
+			}
+
+			totalBytes += value.byteLength;
+
+			if (totalBytes > maxResponseBytes) {
+				await reader.cancel();
+				throw new Error(tooLargeMessage);
+			}
+
+			text += decoder.decode(value, { stream: true });
+		}
+	} finally {
+		reader.releaseLock();
+	}
+
+	return `${text}${decoder.decode()}`;
+};
+
+export const fetchSafePublicText = async (
+	value: string,
+	{
+		blockedMessage = 'この URL は取得できません。',
+		headers,
+		invalidProtocolMessage = 'HTTP または HTTPS の URL のみ取得できます。',
+		invalidRedirectMessage = 'この URL には無効なリダイレクトが含まれています。',
+		maxRedirects = defaultMaxRedirects,
+		maxResponseBytes = defaultMaxResponseBytes,
+		timeoutMessage = 'URL の取得がタイムアウトしました。',
+		timeoutMs = defaultFetchTimeoutMs,
+		tooLargeMessage = '取得したページが大きすぎます。別の URL を試してください。',
+	}: SafePublicFetchOptions = {},
+): Promise<{ response: Response; text: string; url: URL }> => {
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+	let currentUrl = await assertSafePublicHttpUrl(value, {
+		blockedMessage,
+		invalidProtocolMessage,
+		invalidRedirectMessage,
+	});
+
+	try {
+		for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount += 1) {
+			const response = await fetch(currentUrl, {
+				cache: 'no-store',
+				headers,
+				redirect: 'manual',
+				signal: controller.signal,
+			});
+
+			if (response.status >= 300 && response.status < 400) {
+				if (redirectCount === maxRedirects) {
+					throw new Error(invalidRedirectMessage);
+				}
+
+				const location = response.headers.get('location');
+
+				if (!location) {
+					throw new Error(invalidRedirectMessage);
+				}
+
+				currentUrl = await assertSafePublicHttpUrl(new URL(location, currentUrl).toString(), {
+					blockedMessage,
+					invalidProtocolMessage,
+					invalidRedirectMessage,
+				});
+				continue;
+			}
+
+			const text = await readResponseTextWithinLimit(response, maxResponseBytes, tooLargeMessage);
+
+			return {
+				response,
+				text,
+				url: currentUrl,
+			};
+		}
+
+		throw new Error(invalidRedirectMessage);
+	} catch (error) {
+		if (error instanceof Error && error.name === 'AbortError') {
+			throw new Error(timeoutMessage);
+		}
+
+		throw error;
+	} finally {
+		clearTimeout(timeoutId);
+	}
 };

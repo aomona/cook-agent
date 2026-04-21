@@ -8,11 +8,14 @@ import type { NormalizedRecipe, RecipeMaterialChange, RecipeStepChange } from '@
 import { adaptRecipeServings } from '@/lib/recipes/adapt-recipe-servings';
 
 const getErrorMessage = (error: unknown): string => {
-	if (error instanceof Error && error.message) {
+	if (
+		error instanceof Error &&
+		error.message === '人数の調整に必要なレシピ情報が不足しています。'
+	) {
 		return error.message;
 	}
 
-	return 'レシピの最適化に失敗しました。';
+	return 'レシピの最適化に失敗しました。もう一度試行してください。';
 };
 
 const getBaseServings = ({

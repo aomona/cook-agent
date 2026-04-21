@@ -62,11 +62,11 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ pla
 								</NextLink>
 							) : null}
 							{plan.status === 'draft' ? (
-								<NextLink href={`/create/open/${plan.id}`}>
-									<Button as="span" variant="solid">
+								<form action={`/create/open/${plan.id}`} method="post">
+									<Button type="submit" variant="solid">
 										編集を続ける
 									</Button>
-								</NextLink>
+								</form>
 							) : null}
 						</Flex>
 					</Flex>
