@@ -1,133 +1,170 @@
 # cook-agent
 
-AI 支援型の調理システムのプロトタイプです。
+AI 支援で調理計画を作り、調理中の進行も支援するプロトタイプです。
+
+このリポジトリは本番向けのキッチンプラットフォームではなく、構造化された計画生成、計画編集、実行時ガイダンスの UX とエージェント挙動を検証するための実験実装です。
+
+## Overview
 
 プロダクトは大きく 2 つのフェーズで構成されています。
 
 1. 計画フェーズ
-   - 1 つ以上のレシピ URL と人数を受け取る
-   - レシピ情報を構造化された実行計画に変換する
-   - 計画を機械可読な JSON として表現する
-   - 計画をタイムライン形式の UI に表示し、ユーザーが確認・修正できるようにする
+   - 1 つ以上のレシピ URL を取り込みます
+   - レシピを正規化し、人数やキッチン制約を加味して構造化 plan を生成します
+   - 生成した plan をタイムラインとステップカードとして確認できます
+   - 生成後の工程は編集画面から再生成・改善できます
 2. リアルタイム調理フェーズ
-   - 調理中に手順を 1 ステップずつ案内する
-   - 遅延、ミス、進捗更新、材料不足に応答する
-   - 全体を再生成するのではなく、影響を受けた部分だけを再計画する
+   - 生成済み plan をもとに調理セッションを開始します
+   - ステップ進行、タイマー、遅延、ミス、材料不足をイベントとして扱います
+   - 必要に応じて runtime replan を要求できる設計になっています
 
-このリポジトリは、本番向けのキッチンプラットフォームではなく、UX とエージェント挙動を検証するためのプロトタイプです。
+このプロトタイプでは、レシピの元データと execution plan を分離して保持し、実行中は全体を作り直すのではなく影響範囲だけを更新しやすい形を優先しています。
 
-## 技術スタック
+## Current Workflow
+
+1. GitHub ログインでアプリに入る
+2. `/create/start` から下書き plan を作成する
+3. レシピを追加し、人数を設定する
+4. 構造化された工程を生成する
+5. `/plans/[planId]` でレシピ要約、材料、タイムライン、工程一覧を確認する
+6. `/plans/[planId]/edit` で工程を改善する
+7. `/plans/[planId]/cook` で realtime cook runtime を開始する
+
+## Tech Stack
 
 - Next.js 16 App Router
 - React 19
 - strict TypeScript
-- pnpm workspace 構成。アプリ本体は `src/`、共通 UI は `workspaces/ui`
-- Yamada UI
-- カスタム global CSS
-- Drizzle ORM + Neon serverless driver
-- Better Auth
-- AI SDK
+- pnpm workspace
+- Yamada UI + `workspaces/ui` の共通 UI package
+- Drizzle ORM + PostgreSQL
+- Better Auth + GitHub OAuth
+- AI SDK + OpenAI
+- Google GenAI SDK
+- Tavily
 - Biome
 - Vitest + React Testing Library + jsdom
 
-## リポジトリ構成
+## Repository Structure
 
-- `src/app/` - Next.js App Router のエントリポイントとルート
-- `src/lib/` - auth や AI まわりのアプリロジック
-- `src/db/` - Drizzle の schema と DB 接続処理
-- `workspaces/ui/` - Yamada UI ベースの共通 UI export
+- `src/app/`
+  Next.js App Router の画面と route handler。
+- `src/lib/ai/`
+  planner と web search / extraction の実装。
+- `src/lib/plans/`
+  plan schema、型、scheduler、presentation、query ロジック。
+- `src/lib/cook-runtime/`
+  realtime 調理セッション、イベント、タイマー、live runtime の実装。
+- `src/lib/recipes/`
+  レシピ要約、正規化、人数調整の処理。
+- `src/db/`
+  Drizzle schema、auth schema、DB 接続。
+- `workspaces/ui/`
+  Yamada UI を再 export する共通 UI workspace。
 
-主なパス:
+主要ファイル:
 
 - `src/app/page.tsx`
+- `src/app/create/page.tsx`
 - `src/app/plans/[planId]/page.tsx`
-- `src/app/api/auth/[...all]/route.ts`
+- `src/app/plans/[planId]/edit/page.tsx`
+- `src/app/plans/[planId]/cook/page.tsx`
 - `src/lib/ai/planner.ts`
-- `src/lib/auth.ts`
+- `src/lib/cook-runtime/live.ts`
+- `src/lib/plans/schema.ts`
+- `src/lib/plans/types.ts`
 - `src/db/schema.ts`
 - `drizzle.config.ts`
-- `vitest.config.ts`
 
-## プロダクト上の制約
-
-- レシピの元データと実行計画は分離して扱う
-- plan は安定した JSON フレンドリーな構造を優先する
-- 実行時イベントでは、影響を受けた部分だけを更新できるようにする
-- 重い抽象化より、反復しやすさと分かりやすさを優先する
-
-## セットアップ
-
-### 前提
+## Prerequisites
 
 - Node.js 20+
 - pnpm
-- Postgres 互換の `DATABASE_URL`
-- auth フローを使う場合は GitHub OAuth credentials
+- PostgreSQL に接続できる `DATABASE_URL`
+- GitHub OAuth application
+- OpenAI API key
+- Gemini API key
+- Tavily API key
 
-### インストール
+## Setup
+
+依存関係をインストールします。
 
 ```bash
 pnpm install
 ```
 
-### 環境変数
-
-ローカルの `.env` を作成して、次の値を設定してください。
+リポジトリルートに `.env` を作成し、次の環境変数を設定します。
 
 ```bash
 DATABASE_URL=
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 OPENAI_API_KEY=
+GEMINI_API_KEY=
 TAVILY_API_KEY=
 ```
 
-現在コード上で参照している環境変数:
+環境変数の用途:
 
 - `DATABASE_URL`
+  Drizzle と Better Auth が使う PostgreSQL 接続文字列です。
 - `GITHUB_CLIENT_ID`
+  GitHub ログイン用の OAuth client id です。
 - `GITHUB_CLIENT_SECRET`
+  GitHub ログイン用の OAuth client secret です。
 - `OPENAI_API_KEY`
+  レシピ要約、人数調整、plan 生成で使います。
+- `GEMINI_API_KEY`
+  realtime cook runtime の live session で使います。
 - `TAVILY_API_KEY`
+  recipe URL の補助取得や planner / runtime の web search に使います。
 
-## 開発
+`drizzle.config.ts` は `dotenv/config` を通じて `.env` の `DATABASE_URL` を読み込みます。
 
-リポジトリルートで次を実行します。
+## Development
+
+開発サーバーを起動します。
 
 ```bash
 pnpm dev
 ```
 
-ブラウザで `http://localhost:3000` を開いてください。
+ブラウザで `http://localhost:3000` を開きます。
 
-その他の主要コマンド:
+トップページではセッションが無い場合にログインが必要です。実際に画面フローを確認するには GitHub OAuth の設定が必要です。
+
+そのほかの主要コマンド:
 
 ```bash
 pnpm build
 pnpm start
 ```
 
-## 品質チェック
+## Quality Checks
 
-### Lint とフォーマット
+Lint:
 
 ```bash
 pnpm lint
+```
+
+Format:
+
+```bash
 pnpm format
 pnpm exec biome check --write <path>
 ```
 
-### 型チェック
+Type check:
 
-現時点では `package.json` に専用の `typecheck` script はありません。
+このリポジトリには専用の `typecheck` script はありません。
 
 ```bash
 pnpm exec tsc --noEmit
 ```
 
-### テスト
-
-Vitest はユニットテストとローカルなコンポーネントテスト向けに設定されています。
+Test:
 
 ```bash
 pnpm test
@@ -136,15 +173,16 @@ pnpm test:watch
 pnpm test -- <path>
 ```
 
-補足:
+Vitest は `jsdom` 環境で `src/**/*.{test,spec}.{ts,tsx}` と `workspaces/**/*.{test,spec}.{ts,tsx}` を対象に実行します。
 
-- `pnpm test` は通常のローカル開発向けフローで Vitest を実行します
-- `pnpm test:run` は 1 回だけ実行し、テストがまだない状態でも `--passWithNoTests` で成功します
-- Next.js の `async` Server Components は、ユニットテストより E2E テストを優先してください
+## Database
 
-## データベース
+Drizzle schema は `src/db/schema.ts` にあります。主に次のデータを保持します。
 
-Drizzle の設定は `drizzle.config.ts` にあり、`.env` から `DATABASE_URL` を読み込みます。
+- recipe source とその正規化結果
+- plan 本体と version 履歴
+- user ごとの planning settings
+- cooking session、session event、session timer
 
 よく使うコマンド:
 
@@ -153,36 +191,20 @@ pnpm exec drizzle-kit generate
 pnpm exec drizzle-kit migrate
 ```
 
-## 認証
+## Architecture Notes
 
-- Better Auth は `src/lib/auth.ts` で設定されています
-- Next.js 側の auth handler は `src/app/api/auth/[...all]/route.ts` にあります
-- GitHub OAuth は `GITHUB_CLIENT_ID` と `GITHUB_CLIENT_SECRET` を前提にしています
+- plan は `version: 2` の安定した JSON schema で管理します
+- plan step には `timeline`、`after`、`req`、`timers`、`recoveryTips` などを含めます
+- planner は正規化済みレシピを主な入力として扱い、不足情報がある場合のみ web search を補助的に使います
+- planning settings では調理器具数、食事制約、アレルゲン、調理可能時間を扱います
+- realtime runtime では delay、mistake、ingredient shortage、timer などのイベントを保存します
+- 再計画は runtime event を起点に部分的な更新へつなげる設計です
 
-## テストに関するメモ
+## Notes
 
-- Vitest の設定は `vitest.config.ts` にあります
-- React コンポーネント系のユニットテストでは `jsdom` と React Testing Library を使えます
-- `tsconfig.json` の path alias は Vite の `resolve.tsconfigPaths` で解決しています
-
-## コーディング規約
-
-- フォーマットと lint の基準は Biome を使う
-- インデントはタブを使う
-- JavaScript / TypeScript ではシングルクォートを使う
-- 型専用 import は `import type` を使う
-- ルートアプリの import では `@/` alias を優先する
-- クライアント専用の挙動が必要になるまでは Server Components を優先する
-- コメントは最小限にし、意図が分かりにくい箇所だけに付ける
-- `any` は避け、明示的な型や `unknown` の絞り込みを使う
-
-## このプロトタイプにおける完了条件
-
-このプロトタイプで作業が完了したとみなせるのは、次の状態を満たしたときです。
-
-- レシピ URL から構造化 plan を生成できる
-- plan を UI に描画できる
-- ユーザーが plan の修正を依頼できる
-- 実行時イベントによって plan 更新をトリガーできる
-- plan 変更後もアシスタントがガイダンスを継続できる
-- 実装が理解しやすく、反復しやすい状態を保てている
+- UI 文言と planner の自然言語出力は日本語が前提です
+- `next.config.ts` では React Compiler を有効にしています
+- フォーマットと lint の基準は `biome.json` が source of truth です
+- import では `@/` alias を使う構成です
+- `workspaces/ui` は Yamada UI の再 export を担う薄い package です
+- 現時点ではプロトタイプの反復速度を優先しており、重い抽象化よりも分かりやすい実装を優先しています
