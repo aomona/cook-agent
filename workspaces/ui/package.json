@@ -5,9 +5,9 @@
 	"private": true,
 	"scripts": {},
 	"dependencies": {
-		"@yamada-ui/react": "^2.1.4",
-		"react": "^19",
-		"react-dom": "^19"
+		"@yamada-ui/react": "^2.2.1",
+		"react": "^19.2.6",
+		"react-dom": "^19.2.6"
 	},
 	"devDependencies": {
 		"@types/react": "^19",
