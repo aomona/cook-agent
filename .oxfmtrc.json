@@ -1,0 +1,18 @@
+{
+	"$schema": "./node_modules/oxfmt/configuration_schema.json",
+	"ignorePatterns": [
+		".agents/**",
+		".next/**",
+		"node_modules/**",
+		"out/**",
+		"dist/**",
+		"coverage/**",
+		"drizzle/meta/**",
+		"next-env.d.ts",
+		"skills-lock.json",
+		"workspaces/**/node_modules/**"
+	],
+	"printWidth": 100,
+	"singleQuote": true,
+	"useTabs": true
+}

@@ -156,7 +156,7 @@ export const planRecipeSources = pgTable(
 	],
 );
 
-// biome-ignore lint/suspicious/noExplicitAny: breaks recursive table inference for this cross-table composite FK.
+// oxlint-disable-next-line typescript/no-explicit-any -- breaks recursive table inference for this cross-table composite FK.
 export const planVersions: PgTableWithColumns<any> = pgTable(
 	'plan_versions',
 	{
@@ -187,7 +187,7 @@ export const planVersions: PgTableWithColumns<any> = pgTable(
 	],
 );
 
-// biome-ignore lint/suspicious/noExplicitAny: breaks recursive table inference for this cross-table composite FK.
+// oxlint-disable-next-line typescript/no-explicit-any -- breaks recursive table inference for this cross-table composite FK.
 export const plans: PgTableWithColumns<any> = pgTable(
 	'plans',
 	{

@@ -1,0 +1,21 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"ignorePatterns": [
+		".agents/**",
+		".next/**",
+		"node_modules/**",
+		"out/**",
+		"dist/**",
+		"coverage/**",
+		"drizzle/meta/**",
+		"next-env.d.ts",
+		"skills-lock.json",
+		"workspaces/**/node_modules/**"
+	],
+	"plugins": ["import", "jsx-a11y", "nextjs", "react", "react-perf", "typescript", "unicorn"],
+	"settings": {
+		"react": {
+			"version": "19.2.6"
+		}
+	}
+}

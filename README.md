@@ -42,7 +42,7 @@ AI 支援で調理計画を作り、調理中の進行も支援するプロト�
 - AI SDK + OpenAI
 - Google GenAI SDK
 - Tavily
-- Biome
+- Oxlint + Oxfmt
 - Vitest + React Testing Library + jsdom
 
 ## Repository Structure
@@ -153,7 +153,8 @@ Format:
 
 ```bash
 pnpm format
-pnpm exec biome check --write <path>
+pnpm exec oxlint --fix <path>
+pnpm exec oxfmt <path>
 ```
 
 Type check:
@@ -204,7 +205,7 @@ pnpm exec drizzle-kit migrate
 
 - UI 文言と planner の自然言語出力は日本語が前提です
 - `next.config.ts` では React Compiler を有効にしています
-- フォーマットと lint の基準は `biome.json` が source of truth です
+- lint の基準は `.oxlintrc.json`、フォーマットの基準は `.oxfmtrc.json` が source of truth です
 - import では `@/` alias を使う構成です
 - `workspaces/ui` は Yamada UI の再 export を担う薄い package です
 - 現時点ではプロトタイプの反復速度を優先しており、重い抽象化よりも分かりやすい実装を優先しています

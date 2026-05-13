@@ -22,7 +22,7 @@
 
 - Next.js 16 App Router、React 19、strict TypeScript を採用。
 - pnpm workspace 構成で、メインアプリは `src/`、共通 UI は `workspaces/ui` に配置。
-- Tailwind CSS v4、Yamada UI、Biome、Drizzle ORM、Better Auth、AI SDK を利用。
+- Tailwind CSS v4、Yamada UI、Oxlint、Oxfmt、Drizzle ORM、Better Auth、AI SDK を利用。
 
 ## プロダクト上の制約
 
@@ -33,7 +33,7 @@
 ## 重要なパス
 
 - `src/app/`、`src/lib/`、`src/db/`、`workspaces/ui/src/`
-- `biome.json`、`tsconfig.json`、`drizzle.config.ts`
+- `.oxlintrc.json`、`.oxfmtrc.json`、`tsconfig.json`、`drizzle.config.ts`
 
 ## コマンド
 
@@ -51,9 +51,10 @@
 
 ### Lint とフォーマット
 
-- `pnpm lint` - `biome check` を実行する。
-- `pnpm format` - `biome format --write` を実行する。
-- `pnpm exec biome check --write <path>` - 特定ファイルやパスに対して lint / format 修正を行う。
+- `pnpm lint` - `oxlint` を実行する。
+- `pnpm format` - `oxfmt` を実行する。
+- `pnpm exec oxlint --fix <path>` - 特定ファイルやパスに対して lint 修正を行う。
+- `pnpm exec oxfmt <path>` - 特定ファイルやパスに対して format 修正を行う。
 
 ### 型チェック
 
@@ -88,7 +89,7 @@
 
 ### フォーマット
 
-- Biome を唯一の正として扱うこと。
+- lint は Oxlint、format は Oxfmt を唯一の正として扱うこと。
 - インデントはスペースではなくタブを使うこと。
 - JavaScript / TypeScript ではシングルクォートを使うこと。
 - 行幅はおおむね 100 文字前後に保つこと。
@@ -99,7 +100,7 @@
 - 型専用 import は `import type` を使うこと。
 - import の並びは、外部パッケージ、`@/` のような内部エイリアス、相対 import の順を基本とすること。
 - ルートアプリの import には長い相対パスより `@/` エイリアスを優先すること。
-- 未使用 import は避けること。Biome が検出します。
+- 未使用 import は避けること。Oxlint が検出します。
 
 ### TypeScript と型
 
