@@ -420,9 +420,9 @@ export const levelResources = (
 			.filter((step): step is PlanStep =>
 				Boolean(
 					step &&
-						!pinnedIds.has(step.id) &&
-						(step.slack ?? 0) > 0 &&
-						(step.req?.[targetConflict.res] ?? 0) > 0,
+					!pinnedIds.has(step.id) &&
+					(step.slack ?? 0) > 0 &&
+					(step.req?.[targetConflict.res] ?? 0) > 0,
 				),
 			)
 			.sort((left, right) => (left.slack ?? 0) - (right.slack ?? 0));

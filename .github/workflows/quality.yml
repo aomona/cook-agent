@@ -1,0 +1,60 @@
+name: Quality
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality Checks
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgres://user:password@localhost:5432/cook_agent
+      BETTER_AUTH_SECRET: dummy-better-auth-secret-for-ci-only
+      BETTER_AUTH_URL: http://localhost:3000
+      GEMINI_API_KEY: dummy-gemini-api-key
+      GITHUB_CLIENT_ID: dummy-github-client-id
+      GITHUB_CLIENT_SECRET: dummy-github-client-secret
+      NEXT_TELEMETRY_DISABLED: 1
+      OPENAI_API_KEY: dummy-openai-api-key
+      TAVILY_API_KEY: dummy-tavily-api-key
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.27.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit dependencies
+        run: pnpm audit
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Check formatting
+        run: pnpm format --check
+
+      - name: Type check
+        run: pnpm exec tsc --noEmit
+
+      - name: Test
+        run: pnpm test:run
+
+      - name: Build
+        run: pnpm build

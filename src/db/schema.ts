@@ -144,7 +144,9 @@ export const planRecipeSources = pgTable(
 		materialChanges: jsonb('material_changes')
 			.$type<RecipeMaterialChange[]>()
 			.default(sql`'[]'::jsonb`),
-		stepChanges: jsonb('step_changes').$type<RecipeStepChange[]>().default(sql`'[]'::jsonb`),
+		stepChanges: jsonb('step_changes')
+			.$type<RecipeStepChange[]>()
+			.default(sql`'[]'::jsonb`),
 		adjustmentConfirmedAt: timestamp('adjustment_confirmed_at', { withTimezone: true }),
 		adjustedAt: timestamp('adjusted_at', { withTimezone: true }),
 		...timestamps,

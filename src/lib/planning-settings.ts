@@ -123,13 +123,7 @@ const nullableMinutesSchema = z.preprocess((value) => {
 	}
 
 	return value;
-}, z
-	.number()
-	.int()
-	.min(10)
-	.max(300)
-	.nullable()
-	.default(defaultConstraintSettings.maxCookingMinutes));
+}, z.number().int().min(10).max(300).nullable().default(defaultConstraintSettings.maxCookingMinutes));
 
 const equipmentSettingsSchema = z.object({
 	stove: countSettingSchema(defaultEquipmentSettings.stove),
